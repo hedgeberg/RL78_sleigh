@@ -1,0 +1,135 @@
+##########################################################################
+#
+# Attempt at implementing the RL78
+# 16-bit MCU ISA in SLEIGH.
+# Wish me luck.
+#
+# Disclaimer: If this disclaimer is 
+# still present when you obtain this 
+# file, assume it is non-functional.
+# I'm trying my best here.
+#
+##########################################################################
+
+define endian=little;
+define alignment=1;
+
+define space RAM 		type=ram_space		size=1 	default;
+define space register 	type=register_space size=1;
+
+#general purpose registers:
+define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3] 	# 8-bit-mode bank3
+define register offset= 0x00 size=2 [AX3   CB3   DE3   HL3]	 	#16-bit-mode bank3
+define register offset= 0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2] 	# 8-bit-mode bank2
+define register offset= 0x08 size=2 [AX2   CB2   DE2   HL2]	 	#16-bit-mode bank2
+define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1] 	# 8-bit-mode bank1
+define register offset= 0x10 size=2 [AX1   CB1   DE1   HL1]	 	#16-bit-mode bank1
+define register offset= 0x18 size=1 [X A C B E D L H] 			# 8-bit-mode bank0
+define register offset= 0x18 size=2 [AX  CB  DE  HL]	 		#16-bit-mode bank0
+
+#special purpose registers
+define register offset=0x110 size=4 [PC] #I Think this is right??? they don't specify
+define register offset=0x118 size=2 [SP      _     _     _      ]
+define register offset=0x118 size=1 [SPL SPH PSW _ CS ES PMC MEM]
+
+#Flag bits
+#Macros? I think? to make accessing the bits in the PSW easier
+@define IE_flag 	"PSW[7,1]"	# Interrupt Enable (IE)
+@define Z_flag  	"PSW[6,1]" 	# Zero Flag (Z)
+@define RBS1_flag   "PSW[5,1]"	# Register Bank Select Hi-Bit (RBS1)
+@define AC_flag 	"PSW[4,1]"  # Auxiliary Carry Flag (AC)
+@define RBS0_flag	"PSW[3,1]" 	# Register Bank Select Lo-Bit (RBS0)
+@define ISP1_flag 	"PSW[2,1]" 	# In-service priority flag Hi-Bit (ISP1)
+@define ISP0_flag 	"PSW[1,1]"  # In-service priority flag Lo-Bit (ISP0)
+@define CY_flag 	"PSW[0,1]"  # Carry flag (CY)
+
+##########################################################################
+#
+# Instructions
+#
+##########################################################################
+
+#:MOV
+#:XCH
+#:ONEB
+#:CLRB
+#:MOVS
+#:MOVW
+#:XCHW
+#:ONEW
+#:CLRW
+#:ADD
+#:ADDC
+#:SUB
+#:SUBC
+#:AND
+#:OR
+#:XOR
+#:CMP
+#:CMP0
+#:CMPS
+#:ADDW
+#:SUBW
+#:CMPW
+#:MULU
+#:MULHU
+#:MULH
+#:DIVHU
+#:DIVWU
+#:MACHU
+#:MACH
+#:INC
+#:DEC
+#:INCW
+#:DECW
+#:SHR
+#:SHRW
+#:SHL
+#:SHLW
+#:SAR
+#:SARW
+#:ROR
+#:ROL
+#:RORC
+#:ROLC
+#:ROLWC
+#:MOV1
+#:AND1
+#:OR1
+#:XOR1
+#:SET1
+#:CLR1
+#:CALL
+#:CALLT
+#:BRK
+#:RET
+#:RETI
+#:RETB
+#:PUSH
+#:POP
+#:MOVW
+#:ADDW
+#:SUBW
+#:BR
+#:BC
+#:BNC
+#:BZ
+#:BNZ
+#:BH
+#:BNH
+#:BT
+#:BF
+#:BTCLR
+#:SKC
+#:SKNC
+#:SKZ
+#:SKNZ
+#:SKH
+#:SKNH
+#:SEL
+#:NOP
+#:EI
+#:DI
+#:HALT
+#:STOP
+#:PREFIX
