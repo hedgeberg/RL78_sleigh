@@ -14,8 +14,10 @@
 define endian=little;
 define alignment=1;
 
-define space ram 		type=ram_space		size=1 	default;
+define space ram 		type=ram_space		size=2 	default;
 define space register 	type=register_space size=1;
+
+@define PTRSIZE "2"
 
 #general purpose registers:
 define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
@@ -54,12 +56,20 @@ define token op1b (8)
 	op1b_byte = (0,7)
 	op1b_hi = (4,7)
 	op1b_lo = (0,3)
-	op1b_reg = (0,2)
+	op1b_lo3 = (0,2)
+	op1b_reg0 = (0,2)
+	op1b_2xreg = (1,2)
 	op1b_b3 = (3,3)
+	op1b_b2 = (2,2)
+	op1b_b1 = (1,1)
+	op1b_b0 = (0,0)
 ;
 
 define token op2b (8)
-	op2b_byte0 = (0,7)
+	op2b_byte = (0,7)
+	op2b_hi = (4,7)
+	op2b_hi_val = (4,7)
+	op2b_lo = (0,3)
 ;
 
 define token op3b (8)	
@@ -68,37 +78,63 @@ define token op3b (8)
 
 define token data8 (8)
 	imm8 = (0,7)
+	simm8 = (0,7) signed
 ;
 
-attach variables [op1b_reg] [X A C B E D L H];
+define token data16 (16)
+	imm16 = (0,15)
+;
+
+attach variables [op1b_reg0] 	[X A C B E D L H];
+attach variables [op1b_2xreg]	[AX CB DE HL];
+
+##########################################################################
+#
+# Macros
+#
+##########################################################################
+
+#macro push16(val16) {
+#	SP = SP - 2;
+#	ptr:$(PTRSIZE) = SP;
+#	*:2 ptr = val16; 
+#}
+
+RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 
 ##########################################################################
 #
 # Instructions
 #
 ##########################################################################
-
-# MOV <reg>, #<byte> -- 2 bytes
-:MOV op1b_reg," #"imm8	is op1b_hi=0x5 & op1b_b3!=0x1 & op1b_reg; imm8 {
-	op1b_reg = imm8;
+#MOV
+:MOV op1b_reg0," #"imm8	is op1b_hi=0x5 & op1b_b3!=0x1 & op1b_reg0; imm8 {
+	op1b_reg0 = imm8;
 }
 
 #TODO: CD, CE, and CF moves
 
-:MOV "A",op1b_reg 		is op1b_hi=0x6 & op1b_b3!=0x1 & op1b_reg {
-	A = op1b_reg;
+:MOV "A",op1b_reg0 		is op1b_hi=0x6 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 {
+	A = op1b_reg0;
 }
 
-:MOV op1b_reg,"A"		is op1b_hi=0x7 & op1b_b3!=0x1 & op1b_reg {
-	op1b_reg = A;
+:MOV op1b_reg0,"A"		is op1b_hi=0x7 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 {
+	op1b_reg0 = A;
 }
 
-#:MOV
+#TODO: The rest of MOV
+
 #:XCH
 #:ONEB
 #:CLRB
 #:MOVS
+
 #:MOVW
+#TODO: The rest of MOVW
+:MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3!=0x1 & op1b_2xreg & op1b_b0!=0x1; imm16{
+	op1b_2xreg = imm16;
+}
+
 #:XCHW
 #:ONEW
 #:CLRW
@@ -109,7 +145,15 @@ attach variables [op1b_reg] [X A C B E D L H];
 #:AND
 #:OR
 #:XOR
+
 #:CMP
+#TODO: All but case 1 of CMP
+:CMP "A","#"imm8 	is op1b_byte=0x4C; imm8 {
+	$(Z_flag) = ((imm8 - A) == 0);
+	$(CY_flag) = ((imm8 & 0x7f) < (A & 0x7f));
+	$(AC_flag) = ((imm8 & 0x07) < (A & 0x07));
+}
+
 #:CMP0
 #:CMPS
 #:ADDW
@@ -127,7 +171,15 @@ attach variables [op1b_reg] [X A C B E D L H];
 #:INCW
 #:DECW
 #:SHR
-#:SHRW
+
+:SHRW "AX",op2b_hi_val	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xE & op2b_hi!=0x0 {
+	local mask:2 = (0x1:2 << op2b_hi_val);
+	local tmp:2 = ((mask & AX) >> op2b_hi_val) & 0x1:2;
+	local tmp2:1 = tmp[0,7];
+	$(CY_flag) = tmp2;
+	AX = AX >> op2b_hi_val;
+}
+
 #:SHL
 #:SHLW
 #:SAR
@@ -149,14 +201,26 @@ attach variables [op1b_reg] [X A C B E D L H];
 #:RET
 #:RETI
 #:RETB
+
 #:PUSH
+#TODO: need PUSH PSW
+#TODO: resolve 1-byte store ops
+:PUSH op1b_2xreg 	is op1b_hi=0xC & op1b_b3=0 & op1b_2xreg & op1b_b0=1 {
+	SP = SP - 2;
+	*:2 SP = op1b_2xreg;
+}
+
 #:POP
 #:MOVW
 #:ADDW
 #:SUBW
 #:BR
 #:BC
-#:BNC
+
+:BNC "$"RelAddr8 		is op1b_byte=0xDE; RelAddr8 {
+	if ($(CY_flag)) goto RelAddr8;
+}
+
 #:BZ
 #:BNZ
 #:BH
