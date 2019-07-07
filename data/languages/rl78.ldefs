@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<language_definitions>
+  <language processor="RL78"
+            endian="little"
+            size="16"
+            variant="default"
+            version="1.0"
+            slafile="rl78.sla"
+            processorspec="rl78.pspec"
+            id="rl78:LE:16:default">
+    <description>Renesas RL78</description>
+    <compiler name="default" spec="rl78.cspec" id="default"/>
+  </language>
+</language_definitions>
