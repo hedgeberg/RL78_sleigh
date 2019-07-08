@@ -3,7 +3,7 @@ GHIDRA RL78
 
 WIP RL78 implementation for Ghidra SRE. 
 
-Placeholder for image
+![Screenshot of current disassembly](https://raw.githubusercontent.com/hedgeberg/RL78_sleigh/master/images/ghidra_ss.png)
 
 
 Setup
