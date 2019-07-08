@@ -9,7 +9,7 @@ Placeholder for image
 Setup
 -----
 
-Follow the setup instructions as explained in [Ghidra_Falcon][https://github.com/Thog/ghidra_falcon], and if you plan to modify any of the files I recommend you go into $(ghidra_root)/Ghidra/Extensions/rl78_sleigh/data and delete the "languages" folder, then symlink to this languages folder of whereever you download this repo to. That will allow you to iterate and test in Ghidra without having to go through a loop ofuninstall, restart, reinstall, restart, and reopen the project every time you want to test changes.
+Follow the setup instructions as explained in [Ghidra_Falcon](https://github.com/Thog/ghidra_falcon), and if you plan to modify any of the files I recommend you go into $(ghidra_root)/Ghidra/Extensions/rl78_sleigh/data and delete the "languages" folder, then symlink to this languages folder of whereever you download this repo to. That will allow you to iterate and test in Ghidra without having to go through a loop ofuninstall, restart, reinstall, restart, and reopen the project every time you want to test changes.
 
 
 Status
@@ -35,4 +35,4 @@ For those interested in extending this (or just learning about RL78), I've inclu
 Credits
 -------
 
-Thanks to @hthh, @thog, and @roblabla for their work on [Ghidra_Falcon][https://github.com/Thog/ghidra_falcon], which served as the base workflow for this project (i.e. I stole their repo and build system and just edited a couple files with the exception of the rl78 defintion files). Definitely check through their repo, their debugging workflow that they highlighted in their repo is how I've been debugging this. 
+Thanks to [hthh](https://github.com/hthh/), [thog](https://github.com/thog), and [roblabla](https://github.com/roblabla) for their work on [Ghidra_Falcon](https://github.com/Thog/ghidra_falcon), which served as the base workflow for this project (i.e. I stole their repo and build system and just edited a couple files with the exception of the rl78 defintion files). Definitely check through their repo, their debugging workflow that they highlighted in their repo is how I've been debugging this. 
