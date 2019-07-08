@@ -215,16 +215,31 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 #:ADDW
 #:SUBW
 #:BR
-#:BC
 
-:BNC "$"RelAddr8 		is op1b_byte=0xDE; RelAddr8 {
+:BC "$"RelAddr8			is op1b_byte=0xDC; RelAddr8 {
 	if ($(CY_flag)) goto RelAddr8;
 }
 
-#:BZ
-#:BNZ
-#:BH
-#:BNH
+:BNC "$"RelAddr8 		is op1b_byte=0xDE; RelAddr8 {
+	if (!$(CY_flag)) goto RelAddr8;
+}
+
+:BZ "$"RelAddr8 		is op1b_byte=0xDD; RelAddr8 {
+	if ($(Z_flag)) goto RelAddr8;
+}
+
+:BNZ "$"RelAddr8 		is op1b_byte=0xDF; RelAddr8 {
+	if (!$(Z_flag)) goto RelAddr8;
+}
+
+:BH "$"RelAddr8 		is op1b_byte=0x61; op2b_byte=0xC3; RelAddr8 {
+	if (!($(Z_flag)|$(CY_flag))) goto RelAddr8;
+}
+
+:BNH "$"RelAddr8 		is op1b_byte=0x61; op2b_byte=0xD3; RelAddr8 {
+	if (($(Z_flag)|$(CY_flag))) goto RelAddr8;
+}
+
 #:BT
 #:BF
 #:BTCLR
