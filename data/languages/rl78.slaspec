@@ -83,6 +83,9 @@ define token data8 (8)
 
 define token data16 (16)
 	imm16 = (0,15)
+	imm16_lo = (0,7)
+	imm16_hi = (8,15)
+	simm16 = (0,15) signed
 ;
 
 attach variables [op1b_reg0] 	[X A C B E D L H];
@@ -100,7 +103,19 @@ attach variables [op1b_2xreg]	[AX CB DE HL];
 #	*:2 ptr = val16; 
 #}
 
+macro addw_set_flags(val1, val2){
+	local tmp1:2;
+	local tmp2:2;
+	tmp1 = (val1>>15)&0x1;
+	tmp2 = (val2>>15)&0x1;
+	$(CY_flag) = tmp1[0,1] & tmp2[0,1];
+	$(Z_flag) = (val1 == (-val2));
+	$(AC_flag) = 0;
+}
+
 RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
+
+#Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
 ##########################################################################
 #
@@ -156,7 +171,14 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 
 #:CMP0
 #:CMPS
+
 #:ADDW
+#TODO: ADDW SP 
+:ADDW "AX","#"simm16 	is op1b_byte=0x04; simm16 {
+	addw_set_flags(AX, simm16);
+	AX = AX + simm16;
+}
+
 #:SUBW
 #:CMPW
 #:MULU
@@ -250,7 +272,9 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 #:SKH
 #:SKNH
 #:SEL
-#:NOP
+
+:NOP					is op1b_byte=0x00 {}
+
 #:EI
 #:DI
 #:HALT
