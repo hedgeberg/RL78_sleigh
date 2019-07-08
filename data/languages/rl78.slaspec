@@ -47,6 +47,13 @@ define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 @define ISP0_flag 	"PSW[1,1]"  # In-service priority flag Lo-Bit (ISP0)
 @define CY_flag 	"PSW[0,1]"  # Carry flag (CY)
 
+#########################################################################
+#
+# Pseudocode ops
+#
+#########################################################################
+
+define pcodeop skip;
 
 #########################################################################
 #
@@ -163,7 +170,14 @@ macro sr_set_flags8(reg, imm){
 
 macro read_byte(dst, addr){
 	ptr:$(PTRSIZE) = 0x0;
-	ptr[0, 16] = ptr[0, 16] | addr;
+	ptr[0, 16] = addr[0,16];
+	ptr[16, 4] = 0xF;
+	dst = *:1 ptr;
+}
+
+macro read_stack_byte(dst, addr){
+	ptr:$(PTRSIZE) = 0x0;
+	ptr[0, 16] = addr[0,16];
 	ptr[16, 4] = 0xF;
 	dst = *:1 ptr;
 }
@@ -179,11 +193,13 @@ macro read_es_byte(dst, addr){
 
 #macro write_es_byte(src, addr){}
 
+#TODO: check if base for mem reads is 0xF or 0x0, 
+#		datasheet and ODA seem to disagree. 
 macro read_word(dst, addr){
 	local dst_lo:2 = 0x0;
 	local dst_hi:2 = 0x0;
 	ptr:$(PTRSIZE) = 0x0; 
-	ptr[0, 16] = addr;
+	ptr[0, 16] = addr[0,16];
 	ptr[16, 4] = 0xF;
 	dst_lo = *:1 ptr;
 	ptr = ptr + 1;
@@ -195,7 +211,7 @@ macro write_word(src, addr){
 	local src_lo:1 = 0x0;
 	local src_hi:1 = 0x0;
 	ptr:$(PTRSIZE) = 0x0;
-	ptr[0, 16] = addr;
+	ptr[0, 16] = addr[0,16];
 	ptr[16, 4] = 0xF;
 	src_lo = src[0,8];
 	src_hi = src[8,8];
@@ -204,13 +220,42 @@ macro write_word(src, addr){
 	*:1 ptr = src_hi;
 }
 
+macro write_stack_word(src, addr){
+	local src_lo:1 = 0x0;
+	local src_hi:1 = 0x0;
+	ptr:$(PTRSIZE) = 0x0;
+	ptr[0, 16] = addr[0,16];
+	ptr[16, 4] = 0xF;
+	src_lo = src[0,8];
+	src_hi = src[8,8];
+	*:1 ptr = src_lo;
+	ptr = ptr + 1;
+	*:1 ptr = src_hi;
+}
+
+macro read_stack_word(dst, addr){
+	local dst_lo:2 = 0x0;
+	local dst_hi:2 = 0x0;
+	ptr:$(PTRSIZE) = 0x0; 
+	ptr[0, 16] = addr;
+	ptr[16, 4] = 0xF;
+	dst_lo = *:1 ptr;
+	ptr = ptr + 1;
+	dst_hi = *:1 ptr;
+	dst = ((dst_hi << 8)| dst_lo);
+}
+
 macro cmp8_set_flags(arg1, arg2){
 	$(Z_flag) = ((arg2 - arg1) == 0);
 	$(CY_flag) = ((arg2 & 0x7f) < (arg1 & 0x7f));
 	$(AC_flag) = ((arg2 & 0x07) < (arg1 & 0x07));
 }
 
-RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZE) loc; }
+RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        
+		{ export *:$(PTRSIZE) loc; }
+
+addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]	
+		{ export *:$(PTRSIZE) loc; }
 
 #Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
@@ -227,28 +272,34 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 	op1b_reg0 = imm8;
 }
 
-:MOV "A",op1b_reg0 		is op1b_hi=0x6 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 {
+:MOV A,op1b_reg0 		is op1b_hi=0x6 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 & A {
 	A = op1b_reg0;
 }
 
-:MOV op1b_reg0,"A"		is op1b_hi=0x7 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 {
+:MOV op1b_reg0,A		is op1b_hi=0x7 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 & A {
 	op1b_reg0 = A;
 }
 
-:MOV op2b_sfr,"A" 		is op1b_byte=0x9E; op2b_hi=0xF & op2b_b3=0x1 & op2b_sfr {
+:MOV op2b_sfr,A 		is op1b_byte=0x9E; op2b_hi=0xF & op2b_b3=0x1 & op2b_sfr & A {
 	op2b_sfr = A;
 }
 
-:MOV "A","["op1b_reg_dehl"]" is op1b_hi=0x8 
-			& op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 
+:MOV A,"["op1b_reg_dehl"]" is op1b_hi=0x8 
+			& op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & A
 {
 	read_byte(A, op1b_reg_dehl);
 }
 
-:MOV "A","ES:["op1b_reg_dehl"]" is esmarker=0x11; 
+:MOV A,ES":["op1b_reg_dehl"]" is esmarker=0x11; 
 			op1b_hi=0x8 & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1
+			& A & ES
 {
 	read_es_byte(A, op1b_reg_dehl);
+}
+
+:MOV A,imm16[BC] 		is op1b_byte=0x49; imm16 & A & BC {
+	addr:2 = BC + imm16;
+	read_byte(A, addr);
 }
 
 
@@ -266,11 +317,11 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 	op1b_2xreg = imm16;
 }
 
-:MOVW "AX",op1b_2xreg 		is op1b_hi=0x1 & op1b_b3=0 & op1b_2xreg & op1b_b0=1 & op1b_2xreg_dupe!=0x0{
+:MOVW AX,op1b_2xreg 		is op1b_hi=0x1 & op1b_b3=0 & op1b_2xreg & op1b_b0=1 & op1b_2xreg_dupe!=0x0 & AX {
 	AX = op1b_2xreg;
 }
 
-:MOVW op1b_2xreg,"AX"		is op1b_hi=0x1 & op1b_b3=0 & op1b_2xreg & op1b_b0=0 & op1b_2xreg_dupe!=0x0{
+:MOVW op1b_2xreg,AX		is op1b_hi=0x1 & op1b_b3=0 & op1b_2xreg & op1b_b0=0 & op1b_2xreg_dupe!=0x0 & AX {
 	op1b_2xreg = AX;
 }
 
@@ -288,13 +339,13 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 
 #:ADD
 #TODO: All of add except ADD reg, reg
-:ADD "A", op2b_reg0 		is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=0x1 
+:ADD A,op2b_reg0 		is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=0x1 & A
 {
 	add_set_flags(A, op2b_reg0);
 	A = A + op2b_reg0;
 }
 
-:ADD op2b_reg0, "A"			is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=0 & op2b_reg0
+:ADD op2b_reg0, A			is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=0 & op2b_reg0 & A
 {
 	add_set_flags(op2b_reg0, A);
 	op2b_reg0 = op2b_reg0 + A;
@@ -308,24 +359,32 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 #:XOR
 
 #:CMP
+#TODO: Check if CMP operands are in wrong order in macro. ISA is unclear.
 #TODO: Rest of CMP
 # 		we've done 	cmp a, imm8
 #				 	cmp a, reg
 #					cmp reg, a
-:CMP "A","#"imm8 	is op1b_byte=0x4C; imm8 {
+#					cmp !addr16, #byte
+:CMP A,"#"imm8 	is op1b_byte=0x4C; imm8 & A {
 	cmp8_set_flags(A, imm8);
 }
 
-:CMP "A",op2b_reg0	is op1b_byte=0x61; op2b_hi=0x4 & op2b_b3=0x1 & 
-						op2b_reg0 & op2b_reg0_dupe!=0x1
+:CMP A,op2b_reg0	is op1b_byte=0x61; op2b_hi=0x4 & op2b_b3=0x1 & 
+						op2b_reg0 & op2b_reg0_dupe!=0x1 & A
 {
 	cmp8_set_flags(A, op2b_reg0);
 }
 
-:CMP op2b_reg0,"A" 	is op1b_byte=0x61; op2b_hi=0x4 & op2b_b3=0x0 &
-						op2b_reg0 & op2b_reg0_dupe!=0x1
+:CMP op2b_reg0,A 	is op1b_byte=0x61; op2b_hi=0x4 & op2b_b3=0x0 &
+						op2b_reg0 & op2b_reg0_dupe!=0x1 & A
 {
 	cmp8_set_flags(op2b_reg0, A);
+}
+
+:CMP !addr16,"#"imm8 	is op1b_byte=0x40; addr16; imm8{
+	val:1 = 0x0;
+	read_byte(val, addr16);
+	cmp8_set_flags(val, imm8);
 }
 
 #:CMP0
@@ -334,7 +393,7 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 #:ADDW
 #TODO: ADDW SP 
 #TODO: All but 1 case of normal ADDW
-:ADDW "AX","#"simm16 	is op1b_byte=0x04; simm16 {
+:ADDW AX,"#"simm16 	is op1b_byte=0x04; simm16 & AX {
 	addw_set_flags(AX, simm16);
 	AX = AX + simm16;
 }
@@ -348,13 +407,20 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 #:DIVWU
 #:MACHU
 #:MACH
+
 #:INC
+#TODO: all of inc except register direct mode
+
+:INC op1b_reg0 		is op1b_hi=0x8 & op1b_b3=0 & op1b_reg0 {
+	op1b_reg0 = op1b_reg0 + 1;
+}
+
 #:DEC
 #:INCW
 #:DECW
 #:SHR
 
-:SHRW "AX",op2b_hi_val	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xE & op2b_hi!=0x0 {
+:SHRW AX,op2b_hi_val	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xE & op2b_hi!=0x0 & AX {
 	sr_set_flags16(AX, op2b_hi_val);
 	AX = AX >> op2b_hi_val;
 }
@@ -362,7 +428,7 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 #:SHL
 #:SHLW
 
-:SAR "A",op2b_hi_val 	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xB & op2b_hi<0x8 {
+:SAR A,op2b_hi_val 	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xB & op2b_hi<0x8 & A {
 	sr_set_flags8(A, op2b_hi_val);
 	A = A s>> op2b_hi_val;
 } 
@@ -392,14 +458,14 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 #TODO: resolve 1-byte store ops
 :PUSH op1b_2xreg 	is op1b_hi=0xC & op1b_b3=0 & op1b_2xreg & op1b_b0=1 {
 	SP = SP - 2;
-	write_word(op1b_2xreg, SP);
+	write_stack_word(op1b_2xreg, SP);
 }
 
 #:POP
 #TODO: need POP PSW
 #TODO: resolve 1-byte read ops
 :POP op1b_2xreg 	is op1b_hi=0xC & op1b_b3=0 & op1b_2xreg & op1b_b0=0 {
-	read_word(op1b_2xreg, SP);
+	read_stack_word(op1b_2xreg, SP);
 	SP = SP + 2;
 }
 
@@ -442,7 +508,13 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 #:BTCLR
 #:SKC
 #:SKNC
-#:SKZ
+
+:SKZ 					is op1b_byte=0x61; op2b_byte=0xE8 {
+	if !($(Z_flag)) goto inst_next;
+	delayslot(1);
+	goto inst_next;
+}
+
 #:SKNZ
 #:SKH
 #:SKNH
