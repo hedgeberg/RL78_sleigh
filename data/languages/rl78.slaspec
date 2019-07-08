@@ -23,13 +23,13 @@ define space register 	type=register_space size=1;
 
 #general purpose registers:
 define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
-define register offset= 0x00 size=2 [AX3   CB3   DE3   HL3];	#16-bit-mode bank3
+define register offset= 0x00 size=2 [AX3   BC3   DE3   HL3];	#16-bit-mode bank3
 define register offset= 0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2]; 	# 8-bit-mode bank2
-define register offset= 0x08 size=2 [AX2   CB2   DE2   HL2];	#16-bit-mode bank2
+define register offset= 0x08 size=2 [AX2   BC2   DE2   HL2];	#16-bit-mode bank2
 define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1]; 	# 8-bit-mode bank1
-define register offset= 0x10 size=2 [AX1   CB1   DE1   HL1];	#16-bit-mode bank1
+define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];	#16-bit-mode bank1
 define register offset= 0x18 size=1 [X  A  C  B  E  D  L  H]; 	# 8-bit-mode bank0
-define register offset= 0x18 size=2 [AX    CB    DE    HL];	 	#16-bit-mode bank0
+define register offset= 0x18 size=2 [AX    BC    DE    HL];	 	#16-bit-mode bank0
 
 #special purpose registers
 define register offset=0x40 size=4 [PC]; #I Think this is right??? they don't specify
@@ -112,10 +112,10 @@ define token data16 (16)
 ;
 
 attach variables [op1b_reg0 op2b_reg0] 	[X A C B E D L H];
-attach variables [op1b_2xreg]			[AX CB DE HL];
+attach variables [op1b_2xreg]			[AX BC DE HL];
 attach variables [op2b_sfr]				[SPL SPH PSW _ CS ES PMC MEM];
 attach variables [op1b_reg_dehl]		[DE HL];
-attach variables [op1b_reg_axbc]		[AX CB];
+attach variables [op1b_reg_axbc]		[AX BC];
 
 ##########################################################################
 #
@@ -220,11 +220,12 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 #
 ##########################################################################
 
+#:MOV
+#TODO: The rest of MOV
+#TODO: CD, CE, and CF moves
 :MOV op1b_reg0," #"imm8	is op1b_hi=0x5 & op1b_b3!=0x1 & op1b_reg0; imm8 {
 	op1b_reg0 = imm8;
 }
-
-#TODO: CD, CE, and CF moves
 
 :MOV "A",op1b_reg0 		is op1b_hi=0x6 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 {
 	A = op1b_reg0;
@@ -250,8 +251,6 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZ
 	read_es_byte(A, op1b_reg_dehl);
 }
 
-#MOV
-#TODO: The rest of MOV
 
 #:XCH
 #:ONEB
