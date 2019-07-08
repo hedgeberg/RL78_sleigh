@@ -14,10 +14,12 @@
 define endian=little;
 define alignment=1;
 
-define space ram 		type=ram_space		size=2 	default;
+@define PTRSIZE "3"
+
+define space ram 		type=ram_space		size=$(PTRSIZE) 	default;
 define space register 	type=register_space size=1;
 
-@define PTRSIZE "2"
+
 
 #general purpose registers:
 define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
@@ -50,15 +52,28 @@ define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 #
 # Operand data types
 #
+# FYI: You can think of sleigh tokens as both bitfields and parser 
+# 	   directives. Basically, a token is any element that is a potential
+# 	   sub-field you may want to parse out of an instruction, and the 
+# 	   attach keyword is used to turn those parsed fields into
+#	   elements of a register map cleanly.
+#
 #########################################################################
 
 define token op1b (8) 
 	op1b_byte = (0,7)
+
 	op1b_hi = (4,7)
 	op1b_lo = (0,3)
 	op1b_lo3 = (0,2)
+
 	op1b_reg0 = (0,2)
 	op1b_2xreg = (1,2)
+	op1b_2xreg_dupe = (1,2) #duplicate to check val
+	op1b_reg_dehl = (1,1) #special namespace for mov operations
+					   #which are limited to DE and HL r/w.
+					   #This includes all mem load/store ops.
+	op1b_reg_axbc = (0,0) #special namespace for clrw & co, only uses ax/bc
 	op1b_b3 = (3,3)
 	op1b_b2 = (2,2)
 	op1b_b1 = (1,1)
@@ -68,12 +83,20 @@ define token op1b (8)
 define token op2b (8)
 	op2b_byte = (0,7)
 	op2b_hi = (4,7)
-	op2b_hi_val = (4,7)
+	op2b_hi_val = (4,7) #duplicate to check val without causing issues
 	op2b_lo = (0,3)
+	op2b_sfr = (0,2)
+	op2b_b3 = (3,3)
+	op2b_reg0 = (0,2)
+	op2b_reg0_dupe = (0,2)
 ;
 
 define token op3b (8)	
 	op3b_byte0 = (0,7)
+;
+
+define token esbyte (8)
+	esmarker = (0,7)
 ;
 
 define token data8 (8)
@@ -88,8 +111,11 @@ define token data16 (16)
 	simm16 = (0,15) signed
 ;
 
-attach variables [op1b_reg0] 	[X A C B E D L H];
-attach variables [op1b_2xreg]	[AX CB DE HL];
+attach variables [op1b_reg0 op2b_reg0] 	[X A C B E D L H];
+attach variables [op1b_2xreg]			[AX CB DE HL];
+attach variables [op2b_sfr]				[SPL SPH PSW _ CS ES PMC MEM];
+attach variables [op1b_reg_dehl]		[DE HL];
+attach variables [op1b_reg_axbc]		[AX CB];
 
 ##########################################################################
 #
@@ -103,6 +129,8 @@ attach variables [op1b_2xreg]	[AX CB DE HL];
 #	*:2 ptr = val16; 
 #}
 
+
+
 macro addw_set_flags(val1, val2){
 	local tmp1:2;
 	local tmp2:2;
@@ -113,7 +141,76 @@ macro addw_set_flags(val1, val2){
 	$(AC_flag) = 0;
 }
 
-RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
+macro add_set_flags(val1, val2){
+	$(CY_flag) = ((val1>>7)&0x1) & ((val2>>7)&0x1);
+	$(Z_flag)  = (val1 == (-val2));
+	local tmp:1 = 0x0;
+	tmp = val1[0,3] + val2[0,3];
+	tmp = (tmp >> 3) & 0x1;
+	$(AC_flag) = tmp;
+}
+
+macro sr_set_flags16(reg, imm){
+	local tmp:2 = (reg >> imm) & 0x1:2;
+	local tmp2:1 = tmp[0,7];
+	$(CY_flag) = tmp2;
+}
+
+macro sr_set_flags8(reg, imm){
+	local tmp:1 = (reg >> imm) & 0x1:1;
+	$(CY_flag) = tmp;
+}
+
+macro read_byte(dst, addr){
+	ptr:$(PTRSIZE) = 0x0;
+	ptr[0, 16] = ptr[0, 16] | addr;
+	ptr[16, 4] = 0xF;
+	dst = *:1 ptr;
+}
+
+macro read_es_byte(dst, addr){
+	ptr:$(PTRSIZE) = 0x0; 
+	ptr[0, 16] = ptr[0, 16] | addr;
+	ptr[16, 4] = ptr[16, 4] | ES[0, 4];
+	dst = *:1 ptr;
+}
+
+#macro write_byte(src, addr){}
+
+#macro write_es_byte(src, addr){}
+
+macro read_word(dst, addr){
+	local dst_lo:2 = 0x0;
+	local dst_hi:2 = 0x0;
+	ptr:$(PTRSIZE) = 0x0; 
+	ptr[0, 16] = addr;
+	ptr[16, 4] = 0xF;
+	dst_lo = *:1 ptr;
+	ptr = ptr + 1;
+	dst_hi = *:1 ptr;
+	dst = ((dst_hi << 8)| dst_lo);
+}
+
+macro write_word(src, addr){
+	local src_lo:1 = 0x0;
+	local src_hi:1 = 0x0;
+	ptr:$(PTRSIZE) = 0x0;
+	ptr[0, 16] = addr;
+	ptr[16, 4] = 0xF;
+	src_lo = src[0,8];
+	src_hi = src[8,8];
+	*:1 ptr = src_lo;
+	ptr = ptr + 1;
+	*:1 ptr = src_hi;
+}
+
+macro cmp8_set_flags(arg1, arg2){
+	$(Z_flag) = ((arg2 - arg1) == 0);
+	$(CY_flag) = ((arg2 & 0x7f) < (arg1 & 0x7f));
+	$(AC_flag) = ((arg2 & 0x07) < (arg1 & 0x07));
+}
+
+RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:$(PTRSIZE) loc; }
 
 #Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
@@ -122,7 +219,7 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 # Instructions
 #
 ##########################################################################
-#MOV
+
 :MOV op1b_reg0," #"imm8	is op1b_hi=0x5 & op1b_b3!=0x1 & op1b_reg0; imm8 {
 	op1b_reg0 = imm8;
 }
@@ -137,6 +234,23 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 	op1b_reg0 = A;
 }
 
+:MOV op2b_sfr,"A" 		is op1b_byte=0x9E; op2b_hi=0xF & op2b_b3=0x1 & op2b_sfr {
+	op2b_sfr = A;
+}
+
+:MOV "A","["op1b_reg_dehl"]" is op1b_hi=0x8 
+			& op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 
+{
+	read_byte(A, op1b_reg_dehl);
+}
+
+:MOV "A","ES:["op1b_reg_dehl"]" is esmarker=0x11; 
+			op1b_hi=0x8 & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1
+{
+	read_es_byte(A, op1b_reg_dehl);
+}
+
+#MOV
 #TODO: The rest of MOV
 
 #:XCH
@@ -146,14 +260,47 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 
 #:MOVW
 #TODO: The rest of MOVW
-:MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3!=0x1 & op1b_2xreg & op1b_b0!=0x1; imm16{
+#	we've done: movw imm16 into reg pair
+# 				movw from regpair to AX
+#				movw from AX to regpair
+:MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
 
+:MOVW "AX",op1b_2xreg 		is op1b_hi=0x1 & op1b_b3=0 & op1b_2xreg & op1b_b0=1 & op1b_2xreg_dupe!=0x0{
+	AX = op1b_2xreg;
+}
+
+:MOVW op1b_2xreg,"AX"		is op1b_hi=0x1 & op1b_b3=0 & op1b_2xreg & op1b_b0=0 & op1b_2xreg_dupe!=0x0{
+	op1b_2xreg = AX;
+}
+
 #:XCHW
-#:ONEW
-#:CLRW
+
+:ONEW op1b_reg_axbc 		is (op1b_byte=0xE6 | op1b_byte=0xE7) & op1b_reg_axbc
+{
+	op1b_reg_axbc = 0x0001:2;
+}
+
+:CLRW op1b_reg_axbc 		is (op1b_byte=0xF6 | op1b_byte=0xF7) & op1b_reg_axbc
+{
+	op1b_reg_axbc = 0x0000:2;
+}
+
 #:ADD
+#TODO: All of add except ADD reg, reg
+:ADD "A", op2b_reg0 		is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=0x1 
+{
+	add_set_flags(A, op2b_reg0);
+	A = A + op2b_reg0;
+}
+
+:ADD op2b_reg0, "A"			is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=0 & op2b_reg0
+{
+	add_set_flags(op2b_reg0, A);
+	op2b_reg0 = op2b_reg0 + A;
+}
+
 #:ADDC
 #:SUB
 #:SUBC
@@ -162,11 +309,24 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 #:XOR
 
 #:CMP
-#TODO: All but case 1 of CMP
+#TODO: Rest of CMP
+# 		we've done 	cmp a, imm8
+#				 	cmp a, reg
+#					cmp reg, a
 :CMP "A","#"imm8 	is op1b_byte=0x4C; imm8 {
-	$(Z_flag) = ((imm8 - A) == 0);
-	$(CY_flag) = ((imm8 & 0x7f) < (A & 0x7f));
-	$(AC_flag) = ((imm8 & 0x07) < (A & 0x07));
+	cmp8_set_flags(A, imm8);
+}
+
+:CMP "A",op2b_reg0	is op1b_byte=0x61; op2b_hi=0x4 & op2b_b3=0x1 & 
+						op2b_reg0 & op2b_reg0_dupe!=0x1
+{
+	cmp8_set_flags(A, op2b_reg0);
+}
+
+:CMP op2b_reg0,"A" 	is op1b_byte=0x61; op2b_hi=0x4 & op2b_b3=0x0 &
+						op2b_reg0 & op2b_reg0_dupe!=0x1
+{
+	cmp8_set_flags(op2b_reg0, A);
 }
 
 #:CMP0
@@ -174,6 +334,7 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 
 #:ADDW
 #TODO: ADDW SP 
+#TODO: All but 1 case of normal ADDW
 :ADDW "AX","#"simm16 	is op1b_byte=0x04; simm16 {
 	addw_set_flags(AX, simm16);
 	AX = AX + simm16;
@@ -195,16 +356,19 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 #:SHR
 
 :SHRW "AX",op2b_hi_val	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xE & op2b_hi!=0x0 {
-	local mask:2 = (0x1:2 << op2b_hi_val);
-	local tmp:2 = ((mask & AX) >> op2b_hi_val) & 0x1:2;
-	local tmp2:1 = tmp[0,7];
-	$(CY_flag) = tmp2;
+	sr_set_flags16(AX, op2b_hi_val);
 	AX = AX >> op2b_hi_val;
 }
 
 #:SHL
 #:SHLW
-#:SAR
+
+:SAR "A",op2b_hi_val 	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xB & op2b_hi<0x8 {
+	sr_set_flags8(A, op2b_hi_val);
+	A = A s>> op2b_hi_val;
+} 
+
+
 #:SARW
 #:ROR
 #:ROL
@@ -229,14 +393,26 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        { export *:1 loc; }
 #TODO: resolve 1-byte store ops
 :PUSH op1b_2xreg 	is op1b_hi=0xC & op1b_b3=0 & op1b_2xreg & op1b_b0=1 {
 	SP = SP - 2;
-	*:2 SP = op1b_2xreg;
+	write_word(op1b_2xreg, SP);
 }
 
 #:POP
+#TODO: need POP PSW
+#TODO: resolve 1-byte read ops
+:POP op1b_2xreg 	is op1b_hi=0xC & op1b_b3=0 & op1b_2xreg & op1b_b0=0 {
+	read_word(op1b_2xreg, SP);
+	SP = SP + 2;
+}
+
 #:MOVW
 #:ADDW
 #:SUBW
+
 #:BR
+#TODO: All of BR except indirect address
+:BR "$"RelAddr8 		is op1b_byte=0xEF; RelAddr8 {
+	goto RelAddr8;
+}
 
 :BC "$"RelAddr8			is op1b_byte=0xDC; RelAddr8 {
 	if ($(CY_flag)) goto RelAddr8;
