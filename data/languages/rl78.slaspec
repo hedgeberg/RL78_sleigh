@@ -131,6 +131,7 @@ define token esbyte (8)
 ;
 
 define token data8 (8)
+	adr8_dupe = (0,7)
 	adr8 = (0,7)
 	imm8 = (0,7)
 	simm8 = (0,7) signed
@@ -327,6 +328,12 @@ macro cmpw_set_flags(arg1, arg2){
 	$(Z_flag) = (arg2 == arg1);
 }
 
+macro bit_set_to(val, bit_index, set_to){
+	local mask = ~(0x1 << bit_index);
+	val = val & mask;
+	val = val|(set_to<<bit_index);
+}
+
 RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        
 		{ export *:$(PTRSIZE) loc; }
 
@@ -338,6 +345,10 @@ jaddr16:  loc is imm16 [ loc = 0x00000 | imm16;]
 
 jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 		{ export *:1 loc; }
+
+sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
+		{ export *:$(PTRSIZE) loc; }
+
 #Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
 ##########################################################################
@@ -368,6 +379,11 @@ jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 :MOV op2b_sfr,"#"imm8 	is op1b_byte=0xCE; op2b_hi=0xF & op2b_b3=0x1 & op2b_sfr; imm8
 {
 	op2b_sfr = imm8;
+}
+
+:MOV sfr_raw,"#"imm8 	is op1b_byte=0xCE; sfr_raw & adr8_dupe<0xF0; imm8 
+{
+	*:1 sfr_raw = imm8;
 }
 
 :MOV [op1b_reg_dehl],A 	is op1b_hi=0x9 & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & A 
@@ -636,6 +652,8 @@ jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 #:MOV1
 #TODO: 	all mov1 except mov1 CY, A.x
 #						mov1 sfr.x, CY
+#						mov1 CY, [HL].x
+#						mov1 [HL].x, CY
 
 :MOV1 op3b_sfr"."op2b_bit_sel,"CY" 	is op1b_byte=0x71; op2b_b7=0x0 & op2b_bit_sel & op2b_lo=0x9; op3b_hi=0xF & op3b_b3=1 & op3b_sfr
 {
@@ -650,11 +668,39 @@ jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 	$(CY_flag) = ((A>>op2b_bit_sel)&0x1);
 }
 
+:MOV1 "CY,"[HL]"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x4 & HL 
+{
+	local tmp:1 = 0x0;
+	read_byte(tmp, HL);
+	$(CY_flag) = ((tmp>>op2b_bit_sel)&0x1);
+}
 
+:MOV1 [HL]"."op2b_bit_sel,"CY" 	is op1b_byte=0x71; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x1 & HL
+{
+	local hl_dupe:1 = 0x0;
+	read_byte(hl_dupe, HL);
+	local mask = ~(0x1 << op2b_bit_sel);
+	hl_dupe = hl_dupe & mask;
+	hl_dupe = hl_dupe|($(CY_flag)<<op2b_bit_sel);
+	write_byte(hl_dupe, HL);
+}
 #:AND1
 #:OR1
 #:XOR1
+
 #:SET1
+#TODO: all set1 not in done list
+#TODO: reuse bit_set_to macro in other spots
+#Done: 				set1 !addr16.x
+
+:SET1 !addr16"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0; addr16
+{
+	local tmp:1 = 0;
+	tmp = *:1 addr16;
+	bit_set_to(tmp, op2b_bit_sel, 1);
+	*:1 addr16 = tmp;
+}
+
 #:CLR1
 
 #:CALL
@@ -753,8 +799,20 @@ jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 #:BT
 #:BF
 #:BTCLR
-#:SKC
-#:SKNC
+
+:SKC 					is op1b_byte=0x61; op2b_byte=0xC8
+{
+	if $(CY_flag) goto inst_next;
+	delayslot(1);
+	goto inst_next;
+}
+
+:SKNC					is op1b_byte=0x61; op2b_byte=0xD8
+{
+	if !$(CY_flag) goto inst_next;
+	delayslot(1);
+	goto inst_next;
+}
 
 :SKZ 					is op1b_byte=0x61; op2b_byte=0xE8 
 {
