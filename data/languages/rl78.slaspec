@@ -132,7 +132,7 @@ define token esbyte (8)
 
 define token data8 (8)
 	adr8_dupe = (0,7)
-	adr8 = (0,7)
+	adr8 = (0,7) signed
 	imm8 = (0,7)
 	simm8 = (0,7) signed
 ;
@@ -157,6 +157,7 @@ attach variables [op2b_sfrp]			[SP      _     _     _      ];
 attach variables [op1b_reg_4_5]			[_ B C _];
 attach variables [op1b_reg_rp]			[_ DE HL _];
 attach variables [op1b_movw_rp]			[_ BC DE HL];
+
 ##########################################################################
 #
 # Macros
@@ -334,6 +335,12 @@ macro bit_set_to(val, bit_index, set_to){
 	val = val|(set_to<<bit_index);
 }
 
+macro reg_stackarea_offset8(saptr, ptr_reg, adr){
+	saptr = 0x0F0000;
+	local tmp:3 = saptr | zext(ptr_reg);
+	saptr = tmp + adr;
+}
+
 RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        
 		{ export *:$(PTRSIZE) loc; }
 
@@ -416,11 +423,36 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 
 :MOV [op1b_reg_rp + adr8],"#"imm8 	is op1b_hi=0xC & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8; imm8
 {
-	local ptr:$(PTRSIZE) = 0x0F0000;
-	local tmp:2 = op1b_reg_rp;
-	tmp = tmp + sext(adr8:1);
-	ptr[0,16] = ptr[0,16] | tmp;
+	local ptr:$(PTRSIZE) = 0x000000;
+	reg_stackarea_offset8(ptr, op1b_reg_rp, adr8);
+	#local tmp:2 = op1b_reg_rp;
+	#tmp = tmp + sext(adr8:1);
+	#ptr[0,16] = ptr[0,16] | tmp;
 	*:1 ptr = imm8;
+}
+
+:MOV [op1b_reg_rp + adr8],A 		is op1b_hi=0x9 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8 & A
+{
+	local ptr:$(PTRSIZE) = 0x0;
+	reg_stackarea_offset8(ptr, op1b_reg_rp, adr8);
+	*:1 ptr = A;
+}
+
+:MOV A,[op1b_reg_rp + adr8] 		is op1b_hi=0x8 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8 & A
+{
+	local ptr:$(PTRSIZE) = 0x0;
+	reg_stackarea_offset8(ptr, op1b_reg_rp, adr8);
+	A = *:1 ptr;
+}
+
+:MOV A,sfr_raw			is op1b_byte=0x8E; sfr_raw & A 
+{
+	A = *:1 sfr_raw;
+}
+
+:MOV sfr_raw,A 			is op1b_byte=0x9E; sfr_raw & A 
+{
+	*:1 sfr_raw = A;
 }
 
 #:XCH
@@ -514,7 +546,17 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 #:ADDC
 #:SUB
 #:SUBC
+
 #:AND
+#TODO: ~DONE
+#DONE: and A, #imm8
+:AND A,"#"imm8				is op1b_byte=0x5C; imm8 & A
+{
+	local tmp = A & imm8;
+	$(Z_flag) = (tmp == 0);
+	A = tmp;
+}
+
 #:OR
 #:XOR
 
@@ -668,6 +710,7 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	$(CY_flag) = ((A>>op2b_bit_sel)&0x1);
 }
 
+#TODO: Ghidra thinks the bit select value is the offset. needs to be fixed.
 :MOV1 "CY,"[HL]"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x4 & HL 
 {
 	local tmp:1 = 0x0;
