@@ -30,6 +30,7 @@ define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1]; 	# 8-bit-mode ban
 define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];	#16-bit-mode bank1
 define register offset= 0x18 size=1 [X  A  C  B  E  D  L  H]; 	# 8-bit-mode bank0
 define register offset= 0x18 size=2 [AX    BC    DE    HL];	 	#16-bit-mode bank0
+define register offset= 0x20 size=1 [RB0 RB1 RB2 RB3];			#dummy args for register banks
 
 #special purpose registers
 define register offset=0x40 size=4 [PC]; #I Think this is right??? they don't specify
@@ -75,12 +76,22 @@ define token op1b (8)
 	op1b_lo3 = (0,2)
 
 	op1b_reg0 = (0,2)
+	op1b_reg_4_5 = (4,5)
+	op1b_reg0_dupe = (0,2)
 	op1b_2xreg = (1,2)
 	op1b_2xreg_dupe = (1,2) #duplicate to check val
 	op1b_reg_dehl = (1,1) #special namespace for mov operations
 					   #which are limited to DE and HL r/w.
 					   #This includes all mem load/store ops.
 	op1b_reg_axbc = (0,0) #special namespace for clrw & co, only uses ax/bc
+	op1b_movw_rp = (4,5)
+	op1b_movw_rp_dupe = (4,5)
+	op1b_reg_rp = (1,2)
+
+	op1b_b7 = (7,7)
+	op1b_b6 = (6,6)
+	op1b_b5 = (5,5)
+	op1b_b4 = (4,4)
 	op1b_b3 = (3,3)
 	op1b_b2 = (2,2)
 	op1b_b1 = (1,1)
@@ -93,13 +104,26 @@ define token op2b (8)
 	op2b_hi_val = (4,7) #duplicate to check val without causing issues
 	op2b_lo = (0,3)
 	op2b_sfr = (0,2)
+	op2b_sfrp = (0,1)
+
+	op2b_b7 = (7,7)
 	op2b_b3 = (3,3)
+	op2b_b2 = (2,2)
+
 	op2b_reg0 = (0,2)
 	op2b_reg0_dupe = (0,2)
+	op2b_reg_rbsel = (4,5)
+
+	op2b_hi2 = (6,7)
+	op2b_bit_sel = (4,6)
 ;
 
 define token op3b (8)	
 	op3b_byte0 = (0,7)
+	op3b_sfr = (0,2)
+	op3b_hi = (4,7)
+	op3b_lo = (0,3)
+	op3b_b3 = (3,3)
 ;
 
 define token esbyte (8)
@@ -107,6 +131,7 @@ define token esbyte (8)
 ;
 
 define token data8 (8)
+	adr8 = (0,7)
 	imm8 = (0,7)
 	simm8 = (0,7) signed
 ;
@@ -118,12 +143,19 @@ define token data16 (16)
 	simm16 = (0,15) signed
 ;
 
+define token data24 (24)
+	imm24 = (0,23)
+;
+
 attach variables [op1b_reg0 op2b_reg0] 	[X A C B E D L H];
 attach variables [op1b_2xreg]			[AX BC DE HL];
-attach variables [op2b_sfr]				[SPL SPH PSW _ CS ES PMC MEM];
+attach variables [op2b_sfr op3b_sfr]	[SPL SPH PSW _ CS ES PMC MEM];
 attach variables [op1b_reg_dehl]		[DE HL];
 attach variables [op1b_reg_axbc]		[AX BC];
-
+attach variables [op2b_sfrp]			[SP      _     _     _      ];
+attach variables [op1b_reg_4_5]			[_ B C _];
+attach variables [op1b_reg_rp]			[_ DE HL _];
+attach variables [op1b_movw_rp]			[_ BC DE HL];
 ##########################################################################
 #
 # Macros
@@ -189,7 +221,17 @@ macro read_es_byte(dst, addr){
 	dst = *:1 ptr;
 }
 
-#macro write_byte(src, addr){}
+macro write_byte(src, addr){
+	ptr:$(PTRSIZE) = 0x0F0000;
+	ptr[0,16] = ptr[0,16] | addr;
+	*:1 ptr = src;
+}
+
+macro write_stack_byte(src, addr){
+	local ptr:$(PTRSIZE) = 0x0F0000;
+	ptr[0, 16] = addr[0,16];
+	*:1 ptr = src;
+}
 
 #macro write_es_byte(src, addr){}
 
@@ -221,6 +263,7 @@ macro write_word(src, addr){
 }
 
 macro write_stack_word(src, addr){
+	#TODO: replace all write_stack_word uses with push_word uses
 	local src_lo:1 = 0x0;
 	local src_hi:1 = 0x0;
 	ptr:$(PTRSIZE) = 0x0;
@@ -232,6 +275,21 @@ macro write_stack_word(src, addr){
 	ptr = ptr + 1;
 	*:1 ptr = src_hi;
 }
+
+macro push_word(src, stackp){
+	stackp = stackp - 2;
+	local src_lo:1 = 0x0;
+	local src_hi:1 = 0x0;
+	ptr:$(PTRSIZE) = 0x0;
+	ptr[0, 16] = stackp[0,16];
+	ptr[16, 4] = 0xF;
+	src_lo = src[0,8];
+	src_hi = src[8,8];
+	*:1 ptr = src_lo;
+	ptr = ptr + 1;
+	*:1 ptr = src_hi;
+}
+
 
 macro read_stack_word(dst, addr){
 	local dst_lo:2 = 0x0;
@@ -245,10 +303,28 @@ macro read_stack_word(dst, addr){
 	dst = ((dst_hi << 8)| dst_lo);
 }
 
+macro pop_word(dst, stackp){
+	#TODO: replace all read_stack_word uses with pop_word
+	local dst_lo:2 = 0x0;
+	local dst_hi:2 = 0x0;
+	ptr:$(PTRSIZE) = 0x0; 
+	ptr[0, 16] = stackp[0,16];
+	ptr[16, 4] = 0xF;
+	dst_lo = *:1 ptr;
+	ptr = ptr + 1;
+	dst_hi = *:1 ptr;
+	dst = ((dst_hi << 8)| dst_lo);
+	stackp = stackp + 2;
+}
+
 macro cmp8_set_flags(arg1, arg2){
 	$(Z_flag) = ((arg2 - arg1) == 0);
 	$(CY_flag) = ((arg2 & 0x7f) < (arg1 & 0x7f));
 	$(AC_flag) = ((arg2 & 0x07) < (arg1 & 0x07));
+}
+
+macro cmpw_set_flags(arg1, arg2){
+	$(Z_flag) = (arg2 == arg1);
 }
 
 RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        
@@ -257,6 +333,11 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]
 addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]	
 		{ export *:$(PTRSIZE) loc; }
 
+jaddr16:  loc is imm16 [ loc = 0x00000 | imm16;]
+		{ export *:1 loc; }
+
+jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
+		{ export *:1 loc; }
 #Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
 ##########################################################################
@@ -284,6 +365,16 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 	op2b_sfr = A;
 }
 
+:MOV op2b_sfr,"#"imm8 	is op1b_byte=0xCE; op2b_hi=0xF & op2b_b3=0x1 & op2b_sfr; imm8
+{
+	op2b_sfr = imm8;
+}
+
+:MOV [op1b_reg_dehl],A 	is op1b_hi=0x9 & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & A 
+{
+	write_byte(A, op1b_reg_dehl);
+}
+
 :MOV A,"["op1b_reg_dehl"]" is op1b_hi=0x8 
 			& op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & A
 {
@@ -297,11 +388,24 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 	read_es_byte(A, op1b_reg_dehl);
 }
 
+:MOV ES,"#"imm8 		is op1b_byte=0x41; imm8 & ES
+{
+	ES = imm8;
+}
+
 :MOV A,imm16[BC] 		is op1b_byte=0x49; imm16 & A & BC {
 	addr:2 = BC + imm16;
 	read_byte(A, addr);
 }
 
+:MOV [op1b_reg_rp + adr8],"#"imm8 	is op1b_hi=0xC & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8; imm8
+{
+	local ptr:$(PTRSIZE) = 0x0F0000;
+	local tmp:2 = op1b_reg_rp;
+	tmp = tmp + sext(adr8:1);
+	ptr[0,16] = ptr[0,16] | tmp;
+	*:1 ptr = imm8;
+}
 
 #:XCH
 #:ONEB
@@ -313,6 +417,12 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 #	we've done: movw imm16 into reg pair
 # 				movw from regpair to AX
 #				movw from AX to regpair
+#				movw sfrp,#word
+#				movw addr16,ax
+#				movw ax,addr16
+#				movw imm16[r], ax
+#				movw ax, 1mm16[r]
+#				movw rp, !imm16
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -323,6 +433,40 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 
 :MOVW op1b_2xreg,AX		is op1b_hi=0x1 & op1b_b3=0 & op1b_2xreg & op1b_b0=0 & op1b_2xreg_dupe!=0x0 & AX {
 	op1b_2xreg = AX;
+}
+
+:MOVW op2b_sfrp,"#"imm16 is op1b_byte=0xCB; op2b_hi=0xF & op2b_b3=1 & op2b_b2=0 & op2b_sfrp; imm16
+{
+	op2b_sfrp=imm16;
+}
+
+:MOVW AX,!addr16		is op1b_byte=0xAF; addr16 & AX
+{
+	AX = *:2 addr16;
+}
+
+:MOVW !addr16,AX 		is op1b_byte=0xBF; addr16 & AX
+{
+	*:2 addr16 = AX;
+}
+
+:MOVW imm16[op1b_reg_4_5],AX 	is (op1b_byte=0x58 | op1b_byte=0x68) & op1b_reg_4_5;
+							imm16 & AX 
+{
+	local ptr:$(PTRSIZE) = imm16 + zext(op1b_reg_4_5);
+	*:2 ptr = AX;
+}
+
+:MOVW AX,imm16[op1b_reg_4_5] 	is (op1b_byte=0x59 | op1b_byte=0x69) & op1b_reg_4_5;
+								imm16 & AX
+{
+	local ptr:$(PTRSIZE) = imm16 + zext(op1b_reg_4_5);
+	AX = *:2 ptr;
+}
+
+:MOVW op1b_movw_rp,!addr16 		is op1b_b7=1 & op1b_b6=1 & op1b_movw_rp & op1b_lo=0xB & op1b_movw_rp_dupe!=0; addr16
+{
+	op1b_movw_rp = *:2 addr16;
 }
 
 #:XCHW
@@ -388,6 +532,14 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 }
 
 #:CMP0
+#TODO: only done cmp0 a x b c 
+:CMP0 op1b_reg0 		is op1b_hi=0xD & op1b_b3=0 & op1b_reg0 & op1b_reg0_dupe<4 
+{
+	$(AC_flag) = 0;
+	$(CY_flag) = 0;
+	$(Z_flag)  = (op1b_reg0 == 0x0);
+}
+
 #:CMPS
 
 #:ADDW
@@ -399,7 +551,20 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 }
 
 #:SUBW
+
 #:CMPW
+#TODO: all not done
+#DONE: cmpw ax, #imm16
+#	   cmpw ax, rp
+:CMPW AX,"#"imm16 	is op1b_byte=0x44; imm16 & AX{
+	cmpw_set_flags(AX, imm16);
+}
+
+:CMPW AX,op1b_2xreg is op1b_hi=0x4 & op1b_b3=0 & op1b_2xreg & op1b_b0=1 & AX
+{
+	cmpw_set_flags(AX, op1b_2xreg);
+}
+
 #:MULU
 #:MULHU
 #:MULH
@@ -409,15 +574,42 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 #:MACH
 
 #:INC
+#TODO: set CY and AC flags
 #TODO: all of inc except register direct mode
+#TODO: actually set flags
 
 :INC op1b_reg0 		is op1b_hi=0x8 & op1b_b3=0 & op1b_reg0 {
+	$(Z_flag) = (op1b_reg0 == 0xFF);
 	op1b_reg0 = op1b_reg0 + 1;
 }
 
 #:DEC
+#TODO: set CY and AC flags
+#TODO: all of DEC except register mode
+:DEC op1b_reg0 		is op1b_hi=0x9 & op1b_b3=0 & op1b_reg0 {
+	$(Z_flag) = (op1b_reg0 == 0x1);
+	op1b_reg0 = op1b_reg0-1;
+}
+
 #:INCW
+#TODO: set CY and AC flags
+#TODO: implemented thus far:
+#				incw rp
+:INCW op1b_2xreg 	is op1b_hi=0xA & op1b_b3=0 & op1b_2xreg & op1b_b0=1
+{
+	$(Z_flag) = (op1b_2xreg == 0xFFFF);
+	op1b_2xreg = op1b_2xreg+1;
+}
+
 #:DECW
+#TODO: set CY and AC flags
+#TODO: implemented thus far:
+#				decw rp
+:DECW op1b_2xreg 	is op1b_hi=0xB & op1b_b3=0 & op1b_2xreg & op1b_b0=1
+{
+	$(Z_flag) = (op1b_2xreg == 0x0001);
+	op1b_2xreg = op1b_2xreg-1;
+}
 #:SHR
 
 :SHRW AX,op2b_hi_val	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xE & op2b_hi!=0x0 & AX {
@@ -440,16 +632,71 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 #:RORC
 #:ROLC
 #:ROLWC
+
 #:MOV1
+#TODO: 	all mov1 except mov1 CY, A.x
+#						mov1 sfr.x, CY
+
+:MOV1 op3b_sfr"."op2b_bit_sel,"CY" 	is op1b_byte=0x71; op2b_b7=0x0 & op2b_bit_sel & op2b_lo=0x9; op3b_hi=0xF & op3b_b3=1 & op3b_sfr
+{
+	local tmp = op3b_sfr;
+	local mask = (0xFF & (~(0x1)<<op2b_bit_sel));
+	tmp = tmp & mask;
+	op3b_sfr = tmp|($(CY_flag)<<op2b_bit_sel);
+}
+
+:MOV1 "CY,"A"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=1 & op2b_bit_sel & op2b_lo=0xC & A
+{
+	$(CY_flag) = ((A>>op2b_bit_sel)&0x1);
+}
+
+
 #:AND1
 #:OR1
 #:XOR1
 #:SET1
 #:CLR1
+
 #:CALL
+#TODO: all calls except addr16 type
+#						addr20 type
+:CALL !jaddr16 		is op1b_byte=0xFD; jaddr16 
+{
+	local nextpc:3 = inst_next;
+	local nextpc_lo:2 = nextpc[0,16];
+	local nextpc_hi:2 = 0x0:2;
+	nextpc_hi[0,4] = nextpc[16,4];
+	push_word(nextpc_hi, SP);
+	push_word(nextpc_lo, SP);
+	call jaddr16;
+}
+
+:CALL !!jaddr20 	is op1b_byte=0xFC; jaddr20
+{
+	local nextpc:3 = inst_next;
+	local nextpc_lo:2 = nextpc[0,16];
+	local nextpc_hi:2 = 0x0:2;
+	nextpc_hi[0,4] = nextpc[16,4];
+	push_word(nextpc_hi, SP);
+	push_word(nextpc_lo, SP);
+	call jaddr20;
+}
+
 #:CALLT
 #:BRK
-#:RET
+
+:RET 				is op1b_byte=0xD7 
+{
+	ptr:$(PTRSIZE) = 0x0:3;
+	local retaddr_lo:2 = 0x0:2;
+	local retaddr_hi:2 = 0x0:2;
+	pop_word(retaddr_lo, SP);
+	pop_word(retaddr_hi, SP);
+	ptr[0,16] = retaddr_lo;
+	ptr[16,4] = retaddr_hi[0,4];
+	return [ptr];
+}
+
 #:RETI
 #:RETB
 
@@ -509,16 +756,28 @@ addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]
 #:SKC
 #:SKNC
 
-:SKZ 					is op1b_byte=0x61; op2b_byte=0xE8 {
-	if !($(Z_flag)) goto inst_next;
+:SKZ 					is op1b_byte=0x61; op2b_byte=0xE8 
+{
+	if  $(Z_flag) goto inst_next;
 	delayslot(1);
 	goto inst_next;
 }
 
-#:SKNZ
+:SKNZ 					is op1b_byte=0x61; op2b_byte=0xF8 
+{
+	if !$(Z_flag) goto inst_next;
+	delayslot(1);
+	goto inst_next;
+}
+
 #:SKH
 #:SKNH
-#:SEL
+
+:SEL "RB"op2b_reg_rbsel			is op1b_byte=0x61; op2b_hi2=0x3 & op2b_reg_rbsel & op2b_lo=0xF
+{
+	$(RBS1_flag) = ((op2b_reg_rbsel>>1)&0x1);
+	$(RBS0_flag) = op2b_reg_rbsel&0x1;
+}
 
 :NOP					is op1b_byte=0x00 {}
 
