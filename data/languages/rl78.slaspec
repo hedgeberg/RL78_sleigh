@@ -335,6 +335,11 @@ macro bit_set_to(val, bit_index, set_to){
 	val = val|(set_to<<bit_index);
 }
 
+macro bit_get(val, bit_index, dst){
+	local tmp = (val>>bit_index);
+	dst = (tmp & 0x1);
+}
+
 macro reg_stackarea_offset8(saptr, ptr_reg, adr){
 	saptr = 0x0F0000;
 	local tmp:3 = saptr | zext(ptr_reg);
@@ -455,6 +460,16 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	*:1 sfr_raw = A;
 }
 
+:MOV A,!addr16 			is op1b_byte=0x8F; addr16 & A
+{
+	A = *:1 addr16;
+}
+
+:MOV !addr16, A 		is op1b_byte=0x9F; addr16 & A
+{
+	*:1 addr16 = A;
+}
+
 #:XCH
 #:ONEB
 #:CLRB
@@ -471,6 +486,8 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 #				movw imm16[r], ax
 #				movw ax, 1mm16[r]
 #				movw rp, !imm16
+#				movw [dehl], ax
+#				movw ax, [dehl]
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -515,6 +532,16 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 :MOVW op1b_movw_rp,!addr16 		is op1b_b7=1 & op1b_b6=1 & op1b_movw_rp & op1b_lo=0xB & op1b_movw_rp_dupe!=0; addr16
 {
 	op1b_movw_rp = *:2 addr16;
+}
+
+:MOVW AX,[op1b_reg_dehl]		is op1b_hi=0xA & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & AX
+{
+	read_word(AX, op1b_reg_dehl);
+}
+
+:MOVW [op1b_reg_dehl],AX 		is op1b_hi=0xB & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & AX
+{
+	write_word(AX, op1b_reg_dehl);
 }
 
 #:XCHW
@@ -623,6 +650,14 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	cmpw_set_flags(AX, op1b_2xreg);
 }
 
+:CMPW AX,[HL+adr8] 	is op1b_byte=0x61; op2b_byte=0x49; adr8 & AX & HL
+{
+	local ptr:$(PTRSIZE) = 0x0;
+	reg_stackarea_offset8(ptr, HL, adr8);
+	local tmp = *:2 ptr;
+	cmpw_set_flags(AX, tmp);
+}
+
 #:MULU
 #:MULHU
 #:MULH
@@ -667,6 +702,14 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 {
 	$(Z_flag) = (op1b_2xreg == 0x0001);
 	op1b_2xreg = op1b_2xreg-1;
+}
+
+:DECW [HL+adr8] 	is op1b_byte=0x61; op2b_byte=0x89; adr8 & HL
+{
+	local ptr:$(PTRSIZE) = 0x0;
+	reg_stackarea_offset8(ptr, HL, adr8);
+	local tmp = *:2 ptr;
+	*:2 ptr = tmp - 1;
 }
 #:SHR
 
@@ -839,7 +882,13 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	if (($(Z_flag)|$(CY_flag))) goto RelAddr8;
 }
 
-#:BT
+:BT A"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x3; RelAddr8 & A
+{
+	local bit = 0x0;
+	bit_get(A, op2b_bit_sel, bit);
+	if bit goto RelAddr8;
+}
+
 #:BF
 #:BTCLR
 
