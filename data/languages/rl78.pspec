@@ -4,9 +4,6 @@
 
 <processor_spec>
   <programcounter register="PC"/>
-  <global>
-  	
-  </global>
   <volatile outputop="reg_write" inputop="reg_read">
     <range space="register" first="0x00" last="0x60"/> <!-- xcbase xdbase -->
   </volatile>
