@@ -20,7 +20,7 @@ define space ram 		type=ram_space		size=$(PTRSIZE) wordsize=1	default;
 define space stackarea 	type=ram_space 		size=2;
 define space register 	type=register_space size=1;
 
-
+#TODO: mess with a virtual stack register of some sort using context registers?
 
 #general purpose registers:
 define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
@@ -289,6 +289,19 @@ macro push(src){
 macro pop(dst){
 	dst = *[stackarea]:2 SP;
 	SP = SP + 2;
+}
+
+macro pushpc(pc){
+	SP = SP - 3;
+	*[stackarea]:3 SP = pc;
+	SP = SP - 1;
+	*[stackarea]:1 SP = 0x0;
+}
+
+macro poppc(pc){
+	SP = SP + 1;
+	pc = *[stackarea]:3 SP;
+	SP = SP + 3;
 }
 
 macro push_word(src){
@@ -837,23 +850,25 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 #						addr20 type
 :CALL !jaddr16 		is op1b_byte=0xFD; jaddr16 
 {
-	local nextpc:3 = inst_next;
-	local nextpc_lo:2 = nextpc[0,16];
-	local nextpc_hi:2 = 0x0:2;
-	nextpc_hi[0,4] = nextpc[16,4];
-	push(nextpc_hi);
-	push(nextpc_lo);
+	#local nextpc:3 = inst_next;
+	#local nextpc_lo:2 = nextpc[0,16];
+	#local nextpc_hi:2 = 0x0:2;
+	#nextpc_hi[0,4] = nextpc[16,4];
+	#push(nextpc_hi);
+	#push(nextpc_lo);
+	pushpc(PC);
 	call jaddr16;
 }
 
 :CALL !!jaddr20 	is op1b_byte=0xFC; jaddr20
 {
-	local nextpc:3 = inst_next;
-	local nextpc_lo:2 = nextpc[0,16];
-	local nextpc_hi:2 = 0x0:2;
-	nextpc_hi[0,4] = nextpc[16,4];
-	push(nextpc_hi);
-	push(nextpc_lo);
+	#local nextpc:3 = inst_next;
+	#local nextpc_lo:2 = nextpc[0,16];
+	#local nextpc_hi:2 = 0x0:2;
+	#nextpc_hi[0,4] = nextpc[16,4];
+	#push(nextpc_hi);
+	#push(nextpc_lo);
+	pushpc(PC);
 	call jaddr20;
 }
 
@@ -862,17 +877,17 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 
 :RET 				is op1b_byte=0xD7 
 {
-	ptr:$(PTRSIZE) = 0x0:3;
-	local retaddr_lo:2 = 0x0:2;
-	local retaddr_hi:2 = 0x0:2;
+	#ptr:$(PTRSIZE) = 0x0:3;
+	#local retaddr_lo:2 = 0x0:2;
+	#local retaddr_hi:2 = 0x0:2;
 	#pop_word(retaddr_lo, SP);
 	#pop_word(retaddr_hi, SP);
-	pop(retaddr_lo);
-	pop(retaddr_hi);
-	ptr[0,16] = retaddr_lo;
-	ptr[16,4] = retaddr_hi[0,4];
+	#pop(retaddr_lo);
+	#pop(retaddr_hi);
+	#ptr[0,16] = retaddr_lo;
+	#ptr[16,4] = retaddr_hi[0,4];
 	#PC = ptr;
-	PC = ptr;
+	poppc(PC);
 	return [PC];
 }
 
