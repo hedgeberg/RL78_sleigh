@@ -16,7 +16,8 @@ define alignment=1;
 
 @define PTRSIZE "3"
 
-define space ram 		type=ram_space		size=$(PTRSIZE) 	default;
+define space ram 		type=ram_space		size=$(PTRSIZE) wordsize=1	default;
+define space stackarea 	type=ram_space 		size=2;
 define space register 	type=register_space size=1;
 
 
@@ -33,12 +34,13 @@ define register offset= 0x18 size=2 [AX    BC    DE    HL];	 	#16-bit-mode bank0
 define register offset= 0x20 size=1 [RB0 RB1 RB2 RB3];			#dummy args for register banks
 
 #special purpose registers
-define register offset=0x40 size=4 [PC]; #I Think this is right??? they don't specify
+define register offset=0x40 size=3 [PC]; #I Think this is right??? they don't specify
 define register offset=0x50 size=2 [SP      _     _     _      ];
 define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 
 #Flag bits
 #Macros? I think? to make accessing the bits in the PSW easier
+#TODO: convert elements of the PSW to use the bitrange feature
 @define IE_flag 	"PSW[7,1]"	# Interrupt Enable (IE)
 @define Z_flag  	"PSW[6,1]" 	# Zero Flag (Z)
 @define RBS1_flag   "PSW[5,1]"	# Register Bank Select Hi-Bit (RBS1)
@@ -54,7 +56,7 @@ define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 #
 #########################################################################
 
-define pcodeop skip;
+#define pcodeop skip;
 
 #########################################################################
 #
@@ -131,6 +133,7 @@ define token esbyte (8)
 ;
 
 define token data8 (8)
+	uadr8 = (0,7)
 	adr8_dupe = (0,7)
 	adr8 = (0,7) signed
 	imm8 = (0,7)
@@ -278,18 +281,22 @@ macro write_stack_word(src, addr){
 	*:1 ptr = src_hi;
 }
 
-macro push_word(src, stackp){
-	stackp = stackp - 2;
-	local src_lo:1 = 0x0;
-	local src_hi:1 = 0x0;
+macro push(src){
+	SP = SP - 2;
+	*[stackarea]:2 SP = src;
+}
+
+macro pop(dst){
+	dst = *[stackarea]:2 SP;
+	SP = SP + 2;
+}
+
+macro push_word(src){
+	SP = SP - 2;
 	ptr:$(PTRSIZE) = 0x0;
-	ptr[0, 16] = stackp[0,16];
+	ptr[0, 16] = SP;
 	ptr[16, 4] = 0xF;
-	src_lo = src[0,8];
-	src_hi = src[8,8];
-	*:1 ptr = src_lo;
-	ptr = ptr + 1;
-	*:1 ptr = src_hi;
+	*:2 ptr = SP;
 }
 
 
@@ -305,18 +312,13 @@ macro read_stack_word(dst, addr){
 	dst = ((dst_hi << 8)| dst_lo);
 }
 
-macro pop_word(dst, stackp){
+macro pop_word(dst){
 	#TODO: replace all read_stack_word uses with pop_word
-	local dst_lo:2 = 0x0;
-	local dst_hi:2 = 0x0;
 	ptr:$(PTRSIZE) = 0x0; 
-	ptr[0, 16] = stackp[0,16];
+	ptr[0, 16] = SP;
 	ptr[16, 4] = 0xF;
-	dst_lo = *:1 ptr;
-	ptr = ptr + 1;
-	dst_hi = *:1 ptr;
-	dst = ((dst_hi << 8)| dst_lo);
-	stackp = stackp + 2;
+	dst = *:2 ptr;
+	SP = SP + 2;
 }
 
 macro cmp8_set_flags(arg1, arg2){
@@ -346,11 +348,22 @@ macro reg_stackarea_offset8(saptr, ptr_reg, adr){
 	saptr = tmp + adr;
 }
 
+#TODO: fix up all the mangled references
+#		This was based off the z80 slaspec, but they screwed up the handling real bad.
+#		Export *: doesn't export a pointer, it exports a reference which ghiddra converts
+#		into a pointer down the road, and the z80 guys didnt seem to get that. add
+#		TODO: replace all addr16 with add16_1x or add16_2x
 RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]        
 		{ export *:$(PTRSIZE) loc; }
 
 addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]	
 		{ export *:$(PTRSIZE) loc; }
+
+addr16_1x:   loc:3 is imm16 [ loc = 0xf0000 + imm16;]	
+		{ export *:1 loc; }
+
+addr16_2x: 	 loc:3 is imm16 [ loc = 0xf0000 + imm16;]
+		{ export *:2 loc;}
 
 jaddr16:  loc is imm16 [ loc = 0x00000 | imm16;]
 		{ export *:1 loc; }
@@ -358,8 +371,12 @@ jaddr16:  loc is imm16 [ loc = 0x00000 | imm16;]
 jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 		{ export *:1 loc; }
 
-sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
-		{ export *:$(PTRSIZE) loc; }
+sfr_raw1: loc:3 is uadr8 [loc = 0x0FFF00 + uadr8; ]
+		{  export *[ram]:1 loc; }
+
+sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
+		{ export *[ram]:2 loc; }
+
 
 #Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
@@ -393,10 +410,16 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	op2b_sfr = imm8;
 }
 
-:MOV sfr_raw,"#"imm8 	is op1b_byte=0xCE; sfr_raw & adr8_dupe<0xF0; imm8 
+:MOV "sfr:"sfr_raw1,"#"imm8 	is op1b_byte=0xCE; sfr_raw1 & adr8_dupe<0xF0; imm8 
 {
-	*:1 sfr_raw = imm8;
+	sfr_raw1 = imm8;
 }
+
+:MOV sfr_raw1,"#"imm8 	is op1b_byte=0xCD; sfr_raw1; imm8 
+{
+	sfr_raw1 = imm8;
+}
+
 
 :MOV [op1b_reg_dehl],A 	is op1b_hi=0x9 & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & A 
 {
@@ -450,19 +473,19 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	A = *:1 ptr;
 }
 
-:MOV A,sfr_raw			is op1b_byte=0x8E; sfr_raw & A 
+:MOV A,sfr_raw1			is op1b_byte=0x8E; sfr_raw1 & A 
 {
-	A = *:1 sfr_raw;
+	A = sfr_raw1;
 }
 
-:MOV sfr_raw,A 			is op1b_byte=0x9E; sfr_raw & A 
+:MOV sfr_raw1,A 			is op1b_byte=0x9E; sfr_raw1 & A 
 {
-	*:1 sfr_raw = A;
+	sfr_raw1 = A;
 }
 
-:MOV A,!addr16 			is op1b_byte=0x8F; addr16 & A
+:MOV A,!addr16_1x			is op1b_byte=0x8F; addr16_1x & A
 {
-	A = *:1 addr16;
+	A = addr16_1x;
 }
 
 :MOV !addr16, A 		is op1b_byte=0x9F; addr16 & A
@@ -470,9 +493,22 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	*:1 addr16 = A;
 }
 
+:MOV !addr16_1x,"#"imm8 	is op1b_byte=0xCF; addr16_1x; imm8
+{
+	addr16_1x = imm8;
+}
+
 #:XCH
 #:ONEB
+
 #:CLRB
+#TODO: etc
+#DONE:	CLRB !addr16
+:CLRB !addr16_1x 		is op1b_byte=0xF5; addr16_1x
+{
+	addr16_1x = 0x00;
+}
+
 #:MOVS
 
 #:MOVW
@@ -488,6 +524,7 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 #				movw rp, !imm16
 #				movw [dehl], ax
 #				movw ax, [dehl]
+#				movw sfrp, #word
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -510,9 +547,9 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	AX = *:2 addr16;
 }
 
-:MOVW !addr16,AX 		is op1b_byte=0xBF; addr16 & AX
+:MOVW !addr16_2x,AX 		is op1b_byte=0xBF; addr16_2x & AX
 {
-	*:2 addr16 = AX;
+	addr16_2x = AX;
 }
 
 :MOVW imm16[op1b_reg_4_5],AX 	is (op1b_byte=0x58 | op1b_byte=0x68) & op1b_reg_4_5;
@@ -542,6 +579,11 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 :MOVW [op1b_reg_dehl],AX 		is op1b_hi=0xB & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1 & AX
 {
 	write_word(AX, op1b_reg_dehl);
+}
+
+:MOVW "sfr:"sfr_raw2,"#"imm16 		is op1b_byte=0xCB; sfr_raw2; imm16
+{
+	sfr_raw2 = imm16;
 }
 
 #:XCHW
@@ -698,6 +740,7 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 #TODO: set CY and AC flags
 #TODO: implemented thus far:
 #				decw rp
+#				decw [HL+adr8]
 :DECW op1b_2xreg 	is op1b_hi=0xB & op1b_b3=0 & op1b_2xreg & op1b_b0=1
 {
 	$(Z_flag) = (op1b_2xreg == 0x0001);
@@ -798,8 +841,8 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	local nextpc_lo:2 = nextpc[0,16];
 	local nextpc_hi:2 = 0x0:2;
 	nextpc_hi[0,4] = nextpc[16,4];
-	push_word(nextpc_hi, SP);
-	push_word(nextpc_lo, SP);
+	push(nextpc_hi);
+	push(nextpc_lo);
 	call jaddr16;
 }
 
@@ -809,8 +852,8 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	local nextpc_lo:2 = nextpc[0,16];
 	local nextpc_hi:2 = 0x0:2;
 	nextpc_hi[0,4] = nextpc[16,4];
-	push_word(nextpc_hi, SP);
-	push_word(nextpc_lo, SP);
+	push(nextpc_hi);
+	push(nextpc_lo);
 	call jaddr20;
 }
 
@@ -822,11 +865,15 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	ptr:$(PTRSIZE) = 0x0:3;
 	local retaddr_lo:2 = 0x0:2;
 	local retaddr_hi:2 = 0x0:2;
-	pop_word(retaddr_lo, SP);
-	pop_word(retaddr_hi, SP);
+	#pop_word(retaddr_lo, SP);
+	#pop_word(retaddr_hi, SP);
+	pop(retaddr_lo);
+	pop(retaddr_hi);
 	ptr[0,16] = retaddr_lo;
 	ptr[16,4] = retaddr_hi[0,4];
-	return [ptr];
+	#PC = ptr;
+	PC = ptr;
+	return [PC];
 }
 
 #:RETI
@@ -836,16 +883,14 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 #TODO: need PUSH PSW
 #TODO: resolve 1-byte store ops
 :PUSH op1b_2xreg 	is op1b_hi=0xC & op1b_b3=0 & op1b_2xreg & op1b_b0=1 {
-	SP = SP - 2;
-	write_stack_word(op1b_2xreg, SP);
+	push(op1b_2xreg);
 }
 
 #:POP
 #TODO: need POP PSW
 #TODO: resolve 1-byte read ops
 :POP op1b_2xreg 	is op1b_hi=0xC & op1b_b3=0 & op1b_2xreg & op1b_b0=0 {
-	read_stack_word(op1b_2xreg, SP);
-	SP = SP + 2;
+	pop(op1b_2xreg);
 }
 
 #:MOVW
@@ -882,6 +927,9 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 	if (($(Z_flag)|$(CY_flag))) goto RelAddr8;
 }
 
+#:BT
+#TODO: all
+#DONE: BT A.x, adr8
 :BT A"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x3; RelAddr8 & A
 {
 	local bit = 0x0;
@@ -890,6 +938,14 @@ sfr_raw: loc is adr8 [ loc = 0x0FFF00 + adr8; ]
 }
 
 #:BF
+#TODO: all
+#DONE: BF A.x, adr8
+:BF A"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x5; RelAddr8 & A
+{
+	local bit = 0x0;
+	bit_get(A, op2b_bit_sel, bit);
+	if !bit goto RelAddr8;
+}
 #:BTCLR
 
 :SKC 					is op1b_byte=0x61; op2b_byte=0xC8
