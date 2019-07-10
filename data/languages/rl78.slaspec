@@ -21,6 +21,7 @@ define space stackarea 	type=ram_space 		size=2;
 define space register 	type=register_space size=1;
 
 #TODO: mess with a virtual stack register of some sort using context registers?
+#TODO: figure out how to cleanly implement register banks
 
 #general purpose registers:
 define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
@@ -89,6 +90,9 @@ define token op1b (8)
 	op1b_movw_rp = (4,5)
 	op1b_movw_rp_dupe = (4,5)
 	op1b_reg_rp = (1,2)
+	op1b_reg_rp_dupe = (1,2)
+	op1b_movr = (4,5)
+	op1b_movr_dupe = (4,5)
 
 	op1b_b7 = (7,7)
 	op1b_b6 = (6,6)
@@ -160,6 +164,7 @@ attach variables [op2b_sfrp]			[SP      _     _     _      ];
 attach variables [op1b_reg_4_5]			[_ B C _];
 attach variables [op1b_reg_rp]			[_ DE HL _];
 attach variables [op1b_movw_rp]			[_ BC DE HL];
+attach variables [op1b_movr]			[_ X B C];
 
 ##########################################################################
 #
@@ -344,6 +349,12 @@ macro cmpw_set_flags(arg1, arg2){
 	$(Z_flag) = (arg2 == arg1);
 }
 
+macro subw_set_flags(dst, src){
+	$(AC_flag) = 0;
+	$(Z_flag) = (dst == src);
+	$(CY_flag) = (dst < src);
+}
+
 macro bit_set_to(val, bit_index, set_to){
 	local mask = ~(0x1 << bit_index);
 	val = val & mask;
@@ -372,10 +383,10 @@ RelAddr8: loc  is simm8  [ loc = inst_next + simm8; ]
 addr16:   loc is imm16 [ loc = 0xf0000 + imm16;]	
 		{ export *:$(PTRSIZE) loc; }
 
-addr16_1x:   loc:3 is imm16 [ loc = 0xf0000 + imm16;]	
+addr16_1x:   loc is imm16 [ loc = 0xf0000 + imm16;]	
 		{ export *:1 loc; }
 
-addr16_2x: 	 loc:3 is imm16 [ loc = 0xf0000 + imm16;]
+addr16_2x: 	 loc is imm16 [ loc = 0xf0000 + imm16;]
 		{ export *:2 loc;}
 
 jaddr16:  loc is imm16 [ loc = 0x00000 | imm16;]
@@ -384,10 +395,11 @@ jaddr16:  loc is imm16 [ loc = 0x00000 | imm16;]
 jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 		{ export *:1 loc; }
 
-sfr_raw1: loc:3 is uadr8 [loc = 0x0FFF00 + uadr8; ]
+#also called saddr in data sheet
+sfr_raw1: loc is uadr8 [loc = 0x0FFF00 + uadr8; ]
 		{  export *[ram]:1 loc; }
 
-sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
+sfr_raw2: loc is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 		{ export *[ram]:2 loc; }
 
 
@@ -511,6 +523,17 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 	addr16_1x = imm8;
 }
 
+:MOV op1b_movr,!addr16_1x 	is op1b_b7=1 & op1b_b6=1 & op1b_movr & op1b_lo=0x9 & 
+					op1b_movr_dupe!=0; addr16_1x
+{
+	op1b_movr = addr16_1x;
+}
+
+:MOV op1b_movr,sfr_raw1 	is op1b_b7=1 & op1b_b6=1 & op1b_movr & op1b_lo=0x8 &
+					op1b_movr_dupe!=0; sfr_raw1
+{
+	op1b_movr = sfr_raw1;
+}
 #:XCH
 #:ONEB
 
@@ -632,6 +655,7 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 #:AND
 #TODO: ~DONE
 #DONE: and A, #imm8
+#		and A, saddr
 :AND A,"#"imm8				is op1b_byte=0x5C; imm8 & A
 {
 	local tmp = A & imm8;
@@ -639,6 +663,12 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 	A = tmp;
 }
 
+:AND A,sfr_raw1 			is op1b_byte=0x5B; sfr_raw1 & A 
+{
+	local tmp = A & sfr_raw1;
+	$(Z_flag) = (tmp == 0);
+	A = tmp;
+}
 #:OR
 #:XOR
 
@@ -673,6 +703,7 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 
 #:CMP0
 #TODO: only done cmp0 a x b c 
+#				cmp0 addr16
 :CMP0 op1b_reg0 		is op1b_hi=0xD & op1b_b3=0 & op1b_reg0 & op1b_reg0_dupe<4 
 {
 	$(AC_flag) = 0;
@@ -680,17 +711,47 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 	$(Z_flag)  = (op1b_reg0 == 0x0);
 }
 
+:CMP0 !addr16_1x 			is op1b_byte=0xD5; addr16_1x
+{
+	$(AC_flag) = 0;
+	$(CY_flag) = 0;
+	$(Z_flag)  = (addr16_1x == 0x0);
+}
+
 #:CMPS
 
 #:ADDW
 #TODO: ADDW SP 
 #TODO: All but 1 case of normal ADDW
-:ADDW AX,"#"simm16 	is op1b_byte=0x04; simm16 & AX {
+:ADDW AX,"#"simm16 	is op1b_byte=0x04; simm16 & AX 
+{
 	addw_set_flags(AX, simm16);
 	AX = AX + simm16;
 }
 
 #:SUBW
+#TODO: etc
+#DONE: subw AX, #imm16
+#		SUBW AX, rp
+#		SUBW SP, #imm8
+:SUBW AX,"#"imm16 	is op1b_byte=0x24; imm16 & AX
+{
+	subw_set_flags(AX,imm16);
+	AX = AX - imm16;
+}
+
+:SUBW AX, op1b_reg_rp 	is op1b_hi=0x2 & op1b_b3=0 & op1b_reg_rp & op1b_b0=1 & op1b_reg_rp_dupe!=0 & AX
+{
+	subw_set_flags(AX,op1b_reg_rp);
+	AX = AX - op1b_reg_rp;
+}
+
+:SUBW SP,"#"imm8 		is op1b_byte=0x20; imm8 & SP
+{
+	local tmp:2 = sext(imm8:1);
+	subw_set_flags(SP,tmp);
+	SP = SP - tmp;
+}
 
 #:CMPW
 #TODO: all not done
@@ -767,9 +828,22 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 	local tmp = *:2 ptr;
 	*:2 ptr = tmp - 1;
 }
-#:SHR
+:SHR A, op2b_bit_sel is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xA & A
+{
+	local lobit:1 = 0;
+	local shiftcount:1 = 0;
+	local shifted:1 = A;
+	<looptop>
+	lobit = shifted[0,1];
+	shiftcount = shiftcount + 1;
+	shifted = shifted >> 1;
+	if (shiftcount != op2b_bit_sel) goto <looptop>;
+	$(CY_flag) = lobit&0x1;
+	A = shifted;
+}
 
 :SHRW AX,op2b_hi_val	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xE & op2b_hi!=0x0 & AX {
+	#TODO: just realized i screwed up how flags are set in shift ops, need to fix that.
 	sr_set_flags16(AX, op2b_hi_val);
 	AX = AX >> op2b_hi_val;
 }
@@ -835,39 +909,35 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 #TODO: reuse bit_set_to macro in other spots
 #Done: 				set1 !addr16.x
 
-:SET1 !addr16"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0; addr16
+:SET1 !addr16_1x"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0; addr16_1x
 {
 	local tmp:1 = 0;
-	tmp = *:1 addr16;
+	tmp = addr16_1x;
 	bit_set_to(tmp, op2b_bit_sel, 1);
-	*:1 addr16 = tmp;
+	addr16_1x = tmp;
 }
 
 #:CLR1
+#TODO: etc
+#DONE: CLR1 addr16
+:CLR1 !addr16_1x"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=8; addr16_1x
+{
+	local tmp:1 = addr16_1x;
+	bit_set_to(tmp, op2b_bit_sel, 0);
+	addr16_1x = tmp;
+}
 
 #:CALL
 #TODO: all calls except addr16 type
 #						addr20 type
 :CALL !jaddr16 		is op1b_byte=0xFD; jaddr16 
 {
-	#local nextpc:3 = inst_next;
-	#local nextpc_lo:2 = nextpc[0,16];
-	#local nextpc_hi:2 = 0x0:2;
-	#nextpc_hi[0,4] = nextpc[16,4];
-	#push(nextpc_hi);
-	#push(nextpc_lo);
 	pushpc(PC);
 	call jaddr16;
 }
 
 :CALL !!jaddr20 	is op1b_byte=0xFC; jaddr20
 {
-	#local nextpc:3 = inst_next;
-	#local nextpc_lo:2 = nextpc[0,16];
-	#local nextpc_hi:2 = 0x0:2;
-	#nextpc_hi[0,4] = nextpc[16,4];
-	#push(nextpc_hi);
-	#push(nextpc_lo);
 	pushpc(PC);
 	call jaddr20;
 }
@@ -877,16 +947,6 @@ sfr_raw2: loc:3 is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 
 :RET 				is op1b_byte=0xD7 
 {
-	#ptr:$(PTRSIZE) = 0x0:3;
-	#local retaddr_lo:2 = 0x0:2;
-	#local retaddr_hi:2 = 0x0:2;
-	#pop_word(retaddr_lo, SP);
-	#pop_word(retaddr_hi, SP);
-	#pop(retaddr_lo);
-	#pop(retaddr_hi);
-	#ptr[0,16] = retaddr_lo;
-	#ptr[16,4] = retaddr_hi[0,4];
-	#PC = ptr;
 	poppc(PC);
 	return [PC];
 }
