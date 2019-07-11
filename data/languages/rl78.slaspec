@@ -544,15 +544,30 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 {
 	op1b_movr = sfr_raw1;
 }
+
+:MOV A,saddr  				is op1b_byte=0x8D; saddr & A
+{
+	A=saddr;
+}
+
+:MOV saddr,A 				is op1b_byte=0x9D; saddr & A
+{
+	saddr=A;
+}
 #:XCH
 
 #:ONEB
 #TODO: etc
 #DONE: ONEB !addr16
-
+#		oneb, axbc
 :ONEB !addr16_1x 			is op1b_byte=0xE5; addr16_1x
 {
 	addr16_1x = 0x1:1;
+}
+
+:ONEB op1b_reg0		is op1b_hi=0xE & op1b_b3=0 & op1b_reg0 & op1b_b2=0
+{
+	op1b_reg0 = 0x1:1;
 }
 
 #:CLRB
@@ -692,7 +707,18 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 	$(Z_flag) = (tmp == 0);
 	A = tmp;
 }
+
 #:OR
+#TODO: *
+#DONE: or saddr, #byte
+:OR saddr,"#"imm8 			is op1b_byte=0x6A; saddr; imm8
+{
+	local tmp:1 = 0x0;
+	tmp = saddr | imm8;
+	$(Z_flag) = (tmp == 0);
+	saddr = tmp;
+}
+
 #:XOR
 
 #:CMP
@@ -1097,6 +1123,7 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #:BT
 #TODO: all
 #DONE: BT A.x, adr8
+#	   BT saddr.x, $addr20
 :BT A"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x3; RelAddr8 & A
 {
 	local bit = 0x0;
@@ -1104,15 +1131,31 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 	if bit goto RelAddr8;
 }
 
+:BT saddr"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x2; saddr; RelAddr8
+{
+	local bit = 0x0;
+	bit_get(saddr, op2b_bit_sel, bit);
+	if bit goto	RelAddr8;
+}
+
 #:BF
 #TODO: all
 #DONE: BF A.x, adr8
+# 		BF saddr.x, $addr20
 :BF A"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x5; RelAddr8 & A
 {
 	local bit = 0x0;
 	bit_get(A, op2b_bit_sel, bit);
 	if !bit goto RelAddr8;
 }
+
+:BF saddr"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x4; saddr; RelAddr8
+{
+	local bit = 0x0;
+	bit_get(saddr, op2b_bit_sel, bit);
+	if !bit goto RelAddr8;
+}
+
 #:BTCLR
 
 :SKC 					is op1b_byte=0x61; op2b_byte=0xC8
