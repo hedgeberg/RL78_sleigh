@@ -63,6 +63,7 @@ define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 #########################################################################
 
 #define pcodeop skip;
+define pcodeop todo;
 
 #########################################################################
 #
@@ -599,6 +600,8 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #				movw [dehl], ax
 #				movw ax, [dehl]
 #				movw sfrp, #word
+#				movw AX, [hl+byte]
+#				movw [hl+byte], AX
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -660,6 +663,34 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 	sfr_raw2 = imm16;
 }
 
+:MOVW AX,[HL+adr8]				is op1b_byte=0xAC; adr8 & AX & HL
+{
+	local ptr:$(PTRSIZE) = 0;
+	reg_stackarea_offset8(ptr, HL, adr8);
+	AX = *:2 ptr;
+}
+
+:MOVW [HL+adr8],AX 				is op1b_byte=0xBC; adr8 & AX & HL
+{
+	local ptr:$(PTRSIZE) = 0;
+	reg_stackarea_offset8(ptr, HL, adr8);
+	*:2 ptr = AX;
+}
+
+:MOVW AX,[DE+adr8] 				is op1b_byte=0xAA; adr8 & AX & DE
+{
+	local ptr:$(PTRSIZE) = 0;
+	reg_stackarea_offset8(ptr, DE, adr8);
+	AX = *:2 ptr;
+}
+
+:MOVW [DE+adr8],AX 				is op1b_byte=0xBA; adr8 & AX & DE
+{
+	local ptr:$(PTRSIZE) = 0;
+	reg_stackarea_offset8(ptr, DE, adr8);
+	*:2 ptr = AX;
+}
+
 #:XCHW
 
 :ONEW op1b_reg_axbc 		is (op1b_byte=0xE6 | op1b_byte=0xE7) & op1b_reg_axbc
@@ -709,14 +740,26 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 }
 
 #:OR
+#TODO: more macros for instructions in this style. way cleaner. 
+#TODO: add documentation of instructions at each instruction
 #TODO: *
 #DONE: or saddr, #byte
+#		or A, #byte
+macro inst_or(dst, src){
+	local tmp = 0x0;
+	tmp = dst | src;
+	$(Z_flag) = (tmp == 0);
+	dst = tmp;
+}
+
 :OR saddr,"#"imm8 			is op1b_byte=0x6A; saddr; imm8
 {
-	local tmp:1 = 0x0;
-	tmp = saddr | imm8;
-	$(Z_flag) = (tmp == 0);
-	saddr = tmp;
+	inst_or(saddr, imm8);
+}
+
+:OR A,"#"imm8 				is op1b_byte=0x6C; imm8 & A
+{
+	inst_or(A, imm8);
 }
 
 #:XOR
@@ -750,9 +793,8 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 	cmp8_set_flags(val, imm8);
 }
 
-#:CMP0
-#TODO: only done cmp0 a x b c 
-#				cmp0 addr16
+
+
 :CMP0 op1b_reg0 		is op1b_hi=0xD & op1b_b3=0 & op1b_reg0 & op1b_reg0_dupe<4 
 {
 	$(AC_flag) = 0;
@@ -766,6 +808,19 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 	$(CY_flag) = 0;
 	$(Z_flag)  = (addr16_1x == 0x0);
 }
+
+:CMP0 saddr 			is op1b_byte=0xD4; saddr
+{
+	$(AC_flag) = 0;
+	$(CY_flag) = 0;
+	$(Z_flag)  = (saddr == 0x0);
+}
+
+:CMP0 ES:!addr16_1x 	is op1b_byte=0x11; op2b_byte=0xD5; addr16_1x & ES
+{
+	todo();
+}
+
 
 #:CMPS
 
@@ -1124,20 +1179,32 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #TODO: all
 #DONE: BT A.x, adr8
 #	   BT saddr.x, $addr20
+#	   BT sfr.x, $addr20
+macro inst_bt(src, bit_sel, jmpaddr){
+	local bit = 0x0;
+	bit_get(src, bit_sel, bit);
+	if bit goto jmpaddr;
+}
+
 :BT A"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x3; RelAddr8 & A
 {
-	local bit = 0x0;
-	bit_get(A, op2b_bit_sel, bit);
-	if bit goto RelAddr8;
+	inst_bt(A, op2b_bit_sel, RelAddr8);
 }
 
 :BT saddr"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x2; saddr; RelAddr8
 {
-	local bit = 0x0;
-	bit_get(saddr, op2b_bit_sel, bit);
-	if bit goto	RelAddr8;
+	inst_bt(saddr, op2b_bit_sel, RelAddr8);
 }
 
+:BT sfr_raw1"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x2; sfr_raw1 & uadr8<0xF8; RelAddr8
+{
+	inst_bt(sfr_raw1, op2b_bit_sel, RelAddr8);
+}
+
+:BT op3b_sfr"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x2; op3b_hi=0xF & op3b_b3=1 & op3b_sfr; RelAddr8
+{
+	inst_bt(op3b_sfr, op2b_bit_sel, RelAddr8);
+}
 #:BF
 #TODO: all
 #DONE: BF A.x, adr8
