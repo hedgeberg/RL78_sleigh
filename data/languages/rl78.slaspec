@@ -23,6 +23,7 @@ define space register 	type=register_space size=1;
 #TODO: mess with a virtual stack register of some sort using context registers?
 #TODO: figure out how to cleanly implement register banks
 #TODO: refactor bunk register access logic, using pg. 3 of the data sheet as a reference
+#TODO: figure out how to use sleigh's carry operation, pretty sure thats available.
 
 #general purpose registers:
 define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
@@ -724,6 +725,7 @@ macro inst_xch(dst, src){
 #				movw bc/de/hl, saddrp
 #				movw imm16[rp], ax
 #				movw ax, imm16[rp]
+#				movw saddrp, word
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -858,6 +860,10 @@ macro inst_xch(dst, src){
 	bc_offset_word = AX;
 }
 
+:MOVW saddrp,"#"imm16 				is op1b_byte=0xC9; saddrp; imm16
+{
+	saddrp = imm16;
+}
 
 :XCHW AX,op1b_2xreg 				is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=1 & AX
 {
@@ -923,6 +929,20 @@ macro inst_xch(dst, src){
 
 
 #:SUB
+#TODO: figure out AC and CY? CY is prolly wrong here anyway
+#TODO: *
+#DONE: 	sub a, [hl+byte]
+macro inst_sub(dst, src){
+	local tmp:1 = dst - src;
+	$(Z_flag) = (tmp == 0);
+	local neg_src = -src;
+	$(CY_flag) = dst[7,1] & neg_src[7,1];
+	dst = dst - src;
+}
+:SUB A,hl_offset 			is op1b_byte=0x2E; hl_offset & A
+{
+	inst_sub(A, hl_offset);
+}
 
 #:SUBC
 #TODO: *
@@ -954,6 +974,7 @@ macro inst_subc(dst, src){
 #DONE: and A, #imm8
 #		and A, saddr
 #		and a, addr16_1x
+#		and a [hl+byte]
 
 macro inst_and(dst, src){
 	local tmp = dst & src;
@@ -975,6 +996,11 @@ macro inst_and(dst, src){
 	inst_and(A,addr16_1x);
 }
 
+:AND A,hl_offset 			is op1b_byte=0x5E; hl_offset & A
+{
+	inst_and(A,hl_offset);
+}
+
 #:OR
 #TODO: more macros for instructions in this style. way cleaner. 
 #TODO: add documentation of instructions at each instruction
@@ -983,6 +1009,8 @@ macro inst_and(dst, src){
 #		or A, #byte
 # 		or A, reg
 # 		or reg, A
+# 		or A, [hl+byte]
+#		or A, !addr16
 macro inst_or(dst, src){
 	local tmp = 0x0;
 	tmp = dst | src;
@@ -1008,6 +1036,16 @@ macro inst_or(dst, src){
 :OR op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x6 & op2b_b3=0 & op2b_reg0 & A
 {
 	inst_or(op2b_reg0,A);
+}
+
+:OR A,hl_offset 			is op1b_byte=0x6E; hl_offset & A
+{
+	inst_or(A, hl_offset);
+}
+
+:OR A,!addr16_1x 				is op1b_byte=0x6F; addr16_1x & A
+{
+	inst_or(A, addr16_1x);
 }
 
 #:XOR
@@ -1163,10 +1201,7 @@ macro inst_xor(dst, src){
 }
 
 #:CMPW
-#TODO: all not done
-#DONE: cmpw ax, #imm16
-#	   cmpw ax, rp
-#		cmpw ax, hl+adr8
+#TODO: cmpw ES cases
 :CMPW AX,"#"imm16 	is op1b_byte=0x44; imm16 & AX{
 	cmpw_set_flags(AX, imm16);
 }
@@ -1189,6 +1224,12 @@ macro inst_xor(dst, src){
 	cmpw_set_flags(AX, addr16_2x);
 }
 
+:CMPW AX,saddrp 	is op1b_byte=0x46; saddrp & AX 
+{
+	cmpw_set_flags(AX, saddrp);
+}
+
+
 #TODO: figure out how to make this less nasty without confusing the compiler:
 :MULU X (AX"="A"*X")			is op1b_byte=0xD6 & X & A & AX
 {
@@ -1206,10 +1247,7 @@ macro inst_xor(dst, src){
 
 #:INC
 #TODO: set CY and AC flags
-#TODO: all of inc except register direct mode
-#				  		 inc [hl+byte]
-#						 inc saddr
-#TODO: actually set flags
+#TODO: INC ES operations
 
 macro inst_inc(dst){
 	$(Z_flag) = (dst == 0xFF);
@@ -1228,6 +1266,11 @@ macro inst_inc(dst){
 :INC saddr 			is op1b_byte=0xA4; saddr
 {
 	inst_inc(saddr);
+}
+
+:INC !addr16_1x 	is op1b_byte=0xA0; addr16_1x
+{
+	inst_inc(addr16_1x);
 }
 
 #:DEC
@@ -1279,19 +1322,27 @@ macro inst_incw(dst){
 #TODO: implemented thus far:
 #				decw rp
 #				decw [HL+adr8]
-:DECW op1b_2xreg 	is op1b_hi=0xB & op1b_b3=0 & op1b_2xreg & op1b_b0=1
-{
-	$(Z_flag) = (op1b_2xreg == 0x0001);
-	op1b_2xreg = op1b_2xreg-1;
+#				decw saddrp
+macro inst_decw(dst){
+	$(Z_flag) = (dst == 0x0001);
+	dst = dst - 1;
 }
 
-:DECW [HL+adr8] 	is op1b_byte=0x61; op2b_byte=0x89; adr8 & HL
+:DECW op1b_2xreg 	is op1b_hi=0xB & op1b_b3=0 & op1b_2xreg & op1b_b0=1
 {
-	local ptr:$(PTRSIZE) = 0x0;
-	reg_stackarea_offset8(ptr, HL, adr8);
-	local tmp = *:2 ptr;
-	*:2 ptr = tmp - 1;
+	inst_decw(op1b_2xreg);
 }
+
+:DECW hl_offset 	is op1b_byte=0x61; op2b_byte=0x89; hl_offset
+{
+	inst_decw(hl_offset);
+}
+
+:DECW saddrp  		is op1b_byte=0xB6; saddrp
+{
+	inst_decw(saddrp);
+}
+
 
 #TODO: create right-shift macro
 :SHR A, op2b_bit_sel is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xA & A
@@ -1315,6 +1366,7 @@ macro inst_incw(dst){
 }
 
 #:SHL
+
 macro inst_shlw(reg, shiftamt){
 	local hibt:1=0;
 	local shiftcount:1 = 0;
@@ -1714,8 +1766,21 @@ macro inst_bf(src, bit_sel, jmpaddr){
 	goto inst_next;
 }
 
-#:SKH
-#:SKNH
+:SKH 					is op1b_byte=0x61; op2b_byte=0xE3
+{
+	local z_or_cy:1 = $(Z_flag) | $(CY_flag);
+	if z_or_cy goto inst_next;
+	delayslot(1);
+	goto inst_next;
+}
+
+:SKNH					is op1b_byte=0x61; op2b_byte=0xF3
+{
+	local z_or_cy:1 = $(Z_flag) | $(CY_flag);
+	if !z_or_cy goto inst_next;
+	delayslot(1);
+	goto inst_next;
+}
 
 :SEL "RB"op2b_reg_rbsel			is op1b_byte=0x61; op2b_hi2=0x3 & op2b_reg_rbsel & op2b_lo=0xF
 {
