@@ -130,6 +130,14 @@ define token op2b (8)
 	op2b_bit_sel = (4,6)
 ;
 
+define token calltref (8)
+	calltref_b7 = (7,7)
+	calltref_hi = (4,6)
+	calltref_b3 = (3,3)
+	calltref_b2 = (2,2)
+	calltref_lo = (0,1)
+;
+
 define token op3b (8)	
 	op3b_byte = (0,7)
 	op3b_sfr = (0,2)
@@ -402,8 +410,24 @@ jaddr16:  loc is imm16 [ loc = 0x00000 | imm16;]
 jaddr20: loc is imm24 [ loc = imm24&0x0FFFFF; ]
 		{ export *:1 loc; }
 
-#also called saddr in data sheet
+callt_addr: ["vector_table:"adr] is calltref_b7=1 & calltref_hi & calltref_b3=0 & calltref_b2=1 & calltref_lo
+[
+	adr = 0x80 | ((calltref_hi<<1) | (calltref_lo<<4));
+]
+{
+	local newadr:3 = 0x0:3 | zext(adr:1);
+	local table_deref:2 = *:2 newadr;
+	local jmptarget:$(PTRSIZE) = zext(table_deref);
+	export *:1 jmptarget;
+}
+
+#also called saddr in data sheet? wait no i think i was wrong -- need to fix this
 #TODO: separate sfr and sadr calls
+#TODO: replace messy sfr/sfrp invocations
+sfr: op2b_sfr is op2b_hi=0xF & op2b_b3=1 & op2b_sfr { export op2b_sfr; }
+
+sfrp: op2b_sfrp is op2b_hi=0xF & op2b_b3=1 & op2b_b2=0 & op2b_sfrp { export op2b_sfrp; }
+
 sfr_raw1: "sfr:"loc is uadr8 [loc = 0x0FFF00 + uadr8; ]
 		{  export *[ram]:1 loc; }
 
@@ -412,6 +436,20 @@ sfr_raw2: "sfr:"loc is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 
 saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 		{ export *[ram]:1 loc; }
+
+saddrp: loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
+		{ export *[ram]:2 loc; }
+
+#TODO: replace all [HL+x] calls with hl_offset
+hl_offset: [HL+adr8] is adr8 & HL 
+		{ local tmp:3 = 0xF0000:3 + zext(HL:2); 
+		  local loc:3 = tmp + zext(adr8:1);
+		  export *[ram]:1 loc; }
+
+hl_offset_word: [HL+adr8] is adr8 & HL 
+		{ local tmp:3 = 0xF0000:3 + zext(HL:2); 
+		  local loc:3 = tmp + zext(adr8:1);
+		  export *[ram]:2 loc; }
 
 
 #Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
@@ -495,14 +533,14 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 	*:1 ptr = imm8;
 }
 
-:MOV [op1b_reg_rp + adr8],A 		is op1b_hi=0x9 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8 & A
+:MOV [op1b_reg_rp+adr8],A 		is op1b_hi=0x9 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8 & A
 {
 	local ptr:$(PTRSIZE) = 0x0;
 	reg_stackarea_offset8(ptr, op1b_reg_rp, adr8);
 	*:1 ptr = A;
 }
 
-:MOV A,[op1b_reg_rp + adr8] 		is op1b_hi=0x8 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8 & A
+:MOV A,[op1b_reg_rp+adr8] 		is op1b_hi=0x8 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8 & A
 {
 	local ptr:$(PTRSIZE) = 0x0;
 	reg_stackarea_offset8(ptr, op1b_reg_rp, adr8);
@@ -555,7 +593,20 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 {
 	saddr=A;
 }
-#:XCH
+
+
+#:TODO: *
+#: 		XCH A, X
+macro inst_xch(dst, src){
+	local tmp = dst;
+	dst = src;
+	src = tmp;
+}
+
+:XCH A, X 					is op1b_byte=0x08 & A & X
+{
+	inst_xch(A, X);
+}
 
 #:ONEB
 #TODO: etc
@@ -602,6 +653,8 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #				movw sfrp, #word
 #				movw AX, [hl+byte]
 #				movw [hl+byte], AX
+#				movw sfrp, AX
+#				movw AX, sfrp
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -691,6 +744,37 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 	*:2 ptr = AX;
 }
 
+:MOVW sfrp,AX 				is op1b_byte=0xBE; sfrp & AX
+{
+	sfrp = AX;
+}
+
+:MOVW sfr_raw2,AX 			is op1b_byte=0xBE; sfr_raw2 & AX
+{
+	sfr_raw2 = AX;
+}
+
+:MOVW AX,sfrp 				is op1b_byte=0xAE; sfrp & AX
+{
+	AX = sfrp;
+}
+
+:MOVW AX,sfr_raw2 			is op1b_byte=0xAE; sfr_raw2 & AX
+{
+	AX = sfr_raw2;
+}
+
+:MOVW saddrp,AX 			is op1b_byte=0xBD; saddrp & AX
+{
+	saddrp = AX;
+}
+
+:MOVW AX,saddrp 			is op1b_byte=0xAD; saddrp & AX
+{
+	AX = saddrp;
+}
+
+
 #:XCHW
 
 :ONEW op1b_reg_axbc 		is (op1b_byte=0xE6 | op1b_byte=0xE7) & op1b_reg_axbc
@@ -705,6 +789,8 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 
 #:ADD
 #TODO: All of add except ADD reg, reg
+# 						ADD A, imm8
+#						ADD A, [hl+adr8]
 :ADD A,op2b_reg0 		is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=0x1 & A
 {
 	add_set_flags(A, op2b_reg0);
@@ -715,6 +801,18 @@ saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 {
 	add_set_flags(op2b_reg0, A);
 	op2b_reg0 = op2b_reg0 + A;
+}
+
+:ADD A,"#"imm8 				is op1b_byte=0x0C; imm8 & A
+{
+	add_set_flags(A, imm8:1);
+	A = A + imm8;
+}
+
+:ADD A,hl_offset 			is op1b_byte=0x0E; hl_offset & A
+{
+	add_set_flags(A, hl_offset);
+	A = A + hl_offset;
 }
 
 #:ADDC
@@ -771,6 +869,8 @@ macro inst_or(dst, src){
 #				 	cmp a, reg
 #					cmp reg, a
 #					cmp !addr16, #byte
+#					cmp a, saddr
+#					cmp saddr, imm8
 :CMP A,"#"imm8 	is op1b_byte=0x4C; imm8 & A {
 	cmp8_set_flags(A, imm8);
 }
@@ -793,6 +893,15 @@ macro inst_or(dst, src){
 	cmp8_set_flags(val, imm8);
 }
 
+:CMP A, saddr 			is op1b_byte=0x4B; saddr & A
+{
+	cmp8_set_flags(A, saddr);
+}
+
+:CMP saddr,"#"imm8 		is op1b_byte=0x4A; saddr; imm8
+{
+	cmp8_set_flags(saddr, imm8);
+}
 
 
 :CMP0 op1b_reg0 		is op1b_hi=0xD & op1b_b3=0 & op1b_reg0 & op1b_reg0_dupe<4 
@@ -874,6 +983,7 @@ macro inst_or(dst, src){
 #TODO: all not done
 #DONE: cmpw ax, #imm16
 #	   cmpw ax, rp
+#		cmpw ax, hl+adr8
 :CMPW AX,"#"imm16 	is op1b_byte=0x44; imm16 & AX{
 	cmpw_set_flags(AX, imm16);
 }
@@ -891,6 +1001,11 @@ macro inst_or(dst, src){
 	cmpw_set_flags(AX, tmp);
 }
 
+:CMPW AX,!addr16_2x is op1b_byte=0x42; addr16_2x & AX
+{
+	cmpw_set_flags(AX, addr16_2x);
+}
+
 #:MULU
 #:MULHU
 #:MULH
@@ -902,29 +1017,57 @@ macro inst_or(dst, src){
 #:INC
 #TODO: set CY and AC flags
 #TODO: all of inc except register direct mode
+#				  		 inc [hl+byte]
 #TODO: actually set flags
+
 
 :INC op1b_reg0 		is op1b_hi=0x8 & op1b_b3=0 & op1b_reg0 {
 	$(Z_flag) = (op1b_reg0 == 0xFF);
 	op1b_reg0 = op1b_reg0 + 1;
 }
 
+:INC hl_offset 		is op1b_byte=0x61; op2b_byte=0x59; hl_offset
+{
+	$(Z_flag) = (hl_offset == 0xFF);
+	hl_offset = hl_offset + 1;
+}
+
 #:DEC
 #TODO: set CY and AC flags
 #TODO: all of DEC except register mode
+#						dec hl+byte
+macro inst_dec(dst){
+	$(Z_flag) = (dst == 0x1);
+	dst = dst - 1;
+}
+
 :DEC op1b_reg0 		is op1b_hi=0x9 & op1b_b3=0 & op1b_reg0 {
-	$(Z_flag) = (op1b_reg0 == 0x1);
-	op1b_reg0 = op1b_reg0-1;
+	inst_dec(op1b_reg0);
+}
+
+:DEC hl_offset 		is op1b_byte=0x61; op2b_byte=0x69; hl_offset
+{
+	inst_dec(hl_offset);
 }
 
 #:INCW
 #TODO: set CY and AC flags
 #TODO: implemented thus far:
 #				incw rp
+#				incw hl+byte
+macro inst_incw(dst){
+	$(Z_flag) = (dst == 0xFFFF);
+	dst = dst + 1;
+}
+
 :INCW op1b_2xreg 	is op1b_hi=0xA & op1b_b3=0 & op1b_2xreg & op1b_b0=1
 {
-	$(Z_flag) = (op1b_2xreg == 0xFFFF);
-	op1b_2xreg = op1b_2xreg+1;
+	inst_incw(op1b_2xreg);
+}
+
+:INCW hl_offset_word 	is op1b_byte=0x61; op2b_byte=0x79; hl_offset_word
+{
+	inst_incw(hl_offset_word);
 }
 
 #:DECW
@@ -945,6 +1088,7 @@ macro inst_or(dst, src){
 	local tmp = *:2 ptr;
 	*:2 ptr = tmp - 1;
 }
+
 :SHR A, op2b_bit_sel is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xA & A
 {
 	local lobit:1 = 0;
@@ -1094,22 +1238,32 @@ macro inst_or(dst, src){
 	sfr_raw1 = tmp;
 }
 
-#:CALL
+#:CALL 
 #TODO: all calls except addr16 type
 #						addr20 type
+macro inst_call(targ_func){
+	local retpc:3 = inst_next;
+	pushpc(retpc, 0x00:1);
+	PC = &targ_func;
+	call targ_func;
+}
+
 :CALL !jaddr16 		is op1b_byte=0xFD; jaddr16 
 {
-	pushpc(PC, 0x00:1);
-	call jaddr16;
+	inst_call(jaddr16);
 }
 
 :CALL !!jaddr20 	is op1b_byte=0xFC; jaddr20
 {
-	pushpc(PC, 0x00:1);
-	call jaddr20;
+	inst_call(jaddr20);
 }
 
-#:CALLT
+
+:CALLT callt_addr is op1b_byte=0x61; callt_addr
+{
+	inst_call(callt_addr);
+}
+
 #:BRK
 
 :RET 				is op1b_byte=0xD7 
@@ -1147,9 +1301,16 @@ macro inst_or(dst, src){
 
 #:BR
 #TODO: All of BR except indirect address
+#						BR !addr16
 :BR "$"RelAddr8 		is op1b_byte=0xEF; RelAddr8 {
 	goto RelAddr8;
 }
+
+:BR !jaddr16			is op1b_byte=0xED; jaddr16
+{
+	goto jaddr16;
+}
+
 
 :BC "$"RelAddr8			is op1b_byte=0xDC; RelAddr8 {
 	if ($(CY_flag)) goto RelAddr8;
@@ -1205,23 +1366,39 @@ macro inst_bt(src, bit_sel, jmpaddr){
 {
 	inst_bt(op3b_sfr, op2b_bit_sel, RelAddr8);
 }
+
 #:BF
 #TODO: all
 #DONE: BF A.x, adr8
 # 		BF saddr.x, $addr20
+#		BF sfr.x, $addr20
+macro inst_bf(src, bit_sel, jmpaddr){
+	local bit = 0x0;
+	bit_get(src, bit_sel, bit);
+	if !bit goto jmpaddr;
+}
+
 :BF A"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x5; RelAddr8 & A
 {
-	local bit = 0x0;
-	bit_get(A, op2b_bit_sel, bit);
-	if !bit goto RelAddr8;
+	inst_bf(A, op2b_bit_sel, RelAddr8);
 }
 
 :BF saddr"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x4; saddr; RelAddr8
 {
-	local bit = 0x0;
-	bit_get(saddr, op2b_bit_sel, bit);
-	if !bit goto RelAddr8;
+	inst_bf(saddr, op2b_bit_sel, RelAddr8);
 }
+
+:BF op3b_sfr"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x4; op3b_hi=0xF & op3b_b3=1 & op3b_sfr; RelAddr8
+{
+	inst_bf(op3b_sfr, op2b_bit_sel, RelAddr8);
+}
+
+:BF sfr_raw1"."op2b_bit_sel,RelAddr8 is op1b_byte=0x31; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x4; sfr_raw1 & uadr8<0xF8; RelAddr8
+{
+	inst_bf(sfr_raw1, op2b_bit_sel, RelAddr8);
+}
+
+
 
 #:BTCLR
 
