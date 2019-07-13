@@ -9,7 +9,7 @@ WIP RL78 implementation for Ghidra SRE. This repo should now be at the point of 
 Setup
 -----
 
-Follow the setup instructions as explained in [Ghidra_Falcon](https://github.com/Thog/ghidra_falcon), and if you plan to modify any of the files I recommend you go into $(ghidra_root)/Ghidra/Extensions/rl78_sleigh/data and delete the "languages" folder, then symlink to this languages folder of whereever you download this repo to. That will allow you to iterate and test in Ghidra without having to go through a loop ofuninstall, restart, reinstall, restart, and reopen the project every time you want to test changes.
+Follow the setup instructions as explained in [Ghidra_Falcon](https://github.com/Thog/ghidra_falcon), and if you plan to modify any of the files I recommend you go into $(ghidra_root)/Ghidra/Extensions/rl78_sleigh/data and delete the "languages" folder, then symlink to the data/languages folder of whereever you download this repo to. That will allow you to iterate and test in Ghidra without having to go through a loop of uninstall->restart->reinstall->restart->reopen project every time you want to test changes.
 
 
 Status
