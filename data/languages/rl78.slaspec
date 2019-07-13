@@ -64,6 +64,8 @@ define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 
 #define pcodeop skip;
 define pcodeop todo;
+define pcodeop halt;
+define pcodeop stop;
 
 #########################################################################
 #
@@ -119,12 +121,15 @@ define token op2b (8)
 	op2b_sfrp = (0,1)
 
 	op2b_b7 = (7,7)
+	op2b_b6 = (6,6)
 	op2b_b3 = (3,3)
 	op2b_b2 = (2,2)
 
 	op2b_reg0 = (0,2)
 	op2b_reg0_dupe = (0,2)
 	op2b_reg_rbsel = (4,5)
+
+	op2b_reg_rp = (4,5)
 
 	op2b_hi2 = (6,7)
 	op2b_bit_sel = (4,6)
@@ -169,16 +174,16 @@ define token data24 (24)
 	imm24 = (0,23)
 ;
 
-attach variables [op1b_reg0 op2b_reg0] 	[X A C B E D L H];
-attach variables [op1b_2xreg]			[AX BC DE HL];
-attach variables [op2b_sfr op3b_sfr]	[SPL SPH PSW _ CS ES PMC MEM];
-attach variables [op1b_reg_dehl]		[DE HL];
-attach variables [op1b_reg_axbc]		[AX BC];
-attach variables [op2b_sfrp]			[SP      _     _     _      ];
-attach variables [op1b_reg_4_5]			[_ B C _];
-attach variables [op1b_reg_rp]			[_ DE HL _];
-attach variables [op1b_movw_rp]			[_ BC DE HL];
-attach variables [op1b_movr]			[_ X B C];
+attach variables [op1b_reg0 op2b_reg0] 		[X A C B E D L H];
+attach variables [op1b_2xreg op2b_reg_rp]	[AX BC DE HL];
+attach variables [op2b_sfr op3b_sfr]		[SPL SPH PSW _ CS ES PMC MEM];
+attach variables [op1b_reg_dehl]			[DE HL];
+attach variables [op1b_reg_axbc]			[AX BC];
+attach variables [op2b_sfrp]				[SP      _     _     _      ];
+attach variables [op1b_reg_4_5]				[_ B C _];
+attach variables [op1b_reg_rp]				[_ DE HL _];
+attach variables [op1b_movw_rp]				[_ BC DE HL];
+attach variables [op1b_movr]				[_ X B C];
 
 ##########################################################################
 #
@@ -460,16 +465,19 @@ hl_offset_word: [HL+adr8] is adr8 & HL
 		  export *[ram]:2 loc; }
 
 b_offset_byte: imm16[B] is imm16 & B
-		{ local tmp:3 = 0xF0000:3 + zext(BC:2);
+		{ local tmp:3 = 0xF0000:3 + zext(B:1);
 		  local loc:3 = tmp + zext(imm16:2);
-		  export *[ram]:1 loc;
-		}
+		  export *[ram]:1 loc;}
+
+c_offset_byte: imm16[C] is imm16 & C
+		{ local tmp:3 = 0xF0000:3 + zext(C:1);
+		  local loc:3 = tmp + zext(imm16:2);
+		  export *[ram]:1 loc;}
 
 bc_offset_word: imm16[BC] is imm16 & BC
 		{ local tmp:3 = 0xF0000:3 + zext(BC:2);
 		  local loc:3 = tmp + zext(imm16:2);
-		  export *[ram]:2 loc;
-		}
+		  export *[ram]:2 loc;}
 
 sp_offset_byte: [SP+adr8] is adr8 & SP
 		{ local loc:2 = zext(adr8:1) + SP;
@@ -614,6 +622,11 @@ sp_offset_byte: [SP+adr8] is adr8 & SP
 	saddr=A;
 }
 
+:MOV b_offset_byte,"#"imm8		is op1b_byte=0x19; b_offset_byte; imm8
+{
+	b_offset_byte=imm8;
+}
+
 :MOV A,b_offset_byte			is op1b_byte=0x09; b_offset_byte & A
 {
 	A = b_offset_byte;
@@ -652,6 +665,7 @@ macro inst_xch(dst, src){
 #TODO: etc
 #DONE: ONEB !addr16
 #		oneb, axbc
+# 		ONEB saddr
 :ONEB !addr16_1x 			is op1b_byte=0xE5; addr16_1x
 {
 	addr16_1x = 0x1:1;
@@ -660,6 +674,11 @@ macro inst_xch(dst, src){
 :ONEB op1b_reg0		is op1b_hi=0xE & op1b_b3=0 & op1b_reg0 & op1b_b2=0
 {
 	op1b_reg0 = 0x1:1;
+}
+
+:ONEB saddr 		is op1b_byte=0xE4; saddr
+{
+	saddr = 0x1:1;
 }
 
 #:CLRB
@@ -885,26 +904,75 @@ macro inst_xch(dst, src){
 	A = A + hl_offset;
 }
 
-#:ADDC
+#TODO: *
+#DONE:  ADDC A, r
+#		ADDC r, A
+:ADDC A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x1 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=1 & A
+{
+	local tmp:1 = op2b_reg0 + 1;
+	add_set_flags(A, tmp);
+	A = A + tmp;
+}
+
+:ADDC op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x1 & op2b_b3=0 & op2b_reg0 & A
+{
+	local tmp:1 = op2b_reg0 + 1;
+	add_set_flags(tmp, A);
+	op2b_reg0 = A + tmp;
+}
+
+
 #:SUB
+
 #:SUBC
+#TODO: *
+#DONE: 	SUBC A,r
+#		SUBC r,A
+macro inst_subc(dst, src){
+	#TODO: figure out how tf the AC flag actually works
+	local tmp:1 = dst - src;
+	tmp = tmp - $(CY_flag);
+	$(Z_flag) = (tmp == 0);
+	local neg_src_p1:1 = src + 1;
+	neg_src_p1 = -1*neg_src_p1;
+	$(CY_flag) = (dst[7,1] & neg_src_p1[7,1]);
+	dst = tmp;
+}
+
+:SUBC A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x3 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=1 & A
+{
+	inst_subc(A,op2b_reg0);
+}
+
+:SUBC op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x3 & op2b_b3=0 & op2b_reg0 & A
+{
+	inst_subc(op2b_reg0,A);
+}
 
 #:AND
 #TODO: ~DONE
 #DONE: and A, #imm8
 #		and A, saddr
+#		and a, addr16_1x
+
+macro inst_and(dst, src){
+	local tmp = dst & src;
+	$(Z_flag) = (tmp == 0);
+	dst = tmp;
+}
 :AND A,"#"imm8				is op1b_byte=0x5C; imm8 & A
 {
-	local tmp = A & imm8;
-	$(Z_flag) = (tmp == 0);
-	A = tmp;
+	inst_and(A,imm8);
 }
 
 :AND A,sfr_raw1 			is op1b_byte=0x5B; sfr_raw1 & A 
 {
-	local tmp = A & sfr_raw1;
-	$(Z_flag) = (tmp == 0);
-	A = tmp;
+	inst_and(A,sfr_raw1);
+}
+
+:AND A,addr16_1x 			is op1b_byte=0x5F; addr16_1x & A
+{
+	inst_and(A,addr16_1x);
 }
 
 #:OR
@@ -941,7 +1009,26 @@ macro inst_or(dst, src){
 {
 	inst_or(op2b_reg0,A);
 }
+
 #:XOR
+#TODO: *
+#DONE:	XOR A,r
+#		XOR r,A
+
+macro inst_xor(dst, src){
+	$(Z_flag) = (dst == src);
+	dst = (dst ^ src);
+}
+
+:XOR A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x7 & op2b_b3=1 & op2b_reg0 & A
+{
+	inst_xor(A,op2b_reg0);
+}	
+
+:XOR op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x7 & op2b_b3=0 & op2b_reg0 & A
+{
+	inst_xor(op2b_reg0,A);
+}
 
 #:CMP
 #TODO: Check if CMP operands are in wrong order in macro. ISA is unclear.
@@ -1121,24 +1208,33 @@ macro inst_or(dst, src){
 #TODO: set CY and AC flags
 #TODO: all of inc except register direct mode
 #				  		 inc [hl+byte]
+#						 inc saddr
 #TODO: actually set flags
 
+macro inst_inc(dst){
+	$(Z_flag) = (dst == 0xFF);
+	dst = dst + 1;
+}
 
 :INC op1b_reg0 		is op1b_hi=0x8 & op1b_b3=0 & op1b_reg0 {
-	$(Z_flag) = (op1b_reg0 == 0xFF);
-	op1b_reg0 = op1b_reg0 + 1;
+	inst_inc(op1b_reg0);
 }
 
 :INC hl_offset 		is op1b_byte=0x61; op2b_byte=0x59; hl_offset
 {
-	$(Z_flag) = (hl_offset == 0xFF);
-	hl_offset = hl_offset + 1;
+	inst_inc(hl_offset);
+}
+
+:INC saddr 			is op1b_byte=0xA4; saddr
+{
+	inst_inc(saddr);
 }
 
 #:DEC
 #TODO: set CY and AC flags
 #TODO: all of DEC except register mode
 #						dec hl+byte
+#						dec saddr
 macro inst_dec(dst){
 	$(Z_flag) = (dst == 0x1);
 	dst = dst - 1;
@@ -1151,6 +1247,11 @@ macro inst_dec(dst){
 :DEC hl_offset 		is op1b_byte=0x61; op2b_byte=0x69; hl_offset
 {
 	inst_dec(hl_offset);
+}
+
+:DEC saddr 			is op1b_byte=0xB4; saddr
+{
+	inst_dec(saddr);
 }
 
 #:INCW
@@ -1262,8 +1363,24 @@ macro inst_sarw(reg, shiftamt){
 
 #:ROR
 #:ROL
-#:RORC
-#:ROLC
+
+:RORC A, 1 				is op1b_byte=0x61; op2b_byte=0xFB & A
+{
+	local tmp:1 = $(CY_flag);
+	$(CY_flag) = A[0,1];
+	A = A >> 1;
+	A[7,1] = tmp;
+}
+
+:ROLC A, 1 				is op1b_byte=0x61; op2b_byte=0xDC & A
+{
+	local tmp:1 = $(CY_flag);
+	$(CY_flag) = A[7,1];
+	A = A << 1;
+	A[0,1] = tmp[0,1];
+}
+
+
 #:ROLWC
 
 #:MOV1
@@ -1320,7 +1437,21 @@ macro inst_sarw(reg, shiftamt){
 }
 #:AND1
 #:OR1
+
 #:XOR1
+#TODO: *
+#DONE:	XOR1 CY,saddr.x
+
+macro inst_xor1(src, bit_sel){
+	local bit:1 = 0;
+	bit_get(src, bit_sel, bit);
+	bit = bit ^ $(CY_flag);
+	$(CY_flag) = bit;
+}
+:XOR1 "CY,"saddr"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0x7; saddr
+{
+	inst_xor1(saddr, op2b_bit_sel);
+}
 
 #:SET1
 #TODO: all set1 not in done list
@@ -1328,6 +1459,7 @@ macro inst_sarw(reg, shiftamt){
 #Done: 				set1 !addr16.x
 #					set1, sfr
 #					set1 saddr
+#					set1 CY
 
 :SET1 !addr16_1x"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0; addr16_1x
 {
@@ -1349,6 +1481,12 @@ macro inst_sarw(reg, shiftamt){
 	bit_set_to(tmp, op2b_bit_sel, 1);
 	saddr = tmp;
 }
+
+:SET1 "CY"							is op1b_byte=0x71; op2b_byte=0x80
+{
+	$(CY_flag) = 0x1;
+}
+
 #:CLR1
 #TODO: etc
 #DONE: CLR1 addr16
@@ -1399,8 +1537,13 @@ macro inst_call(targ_func){
 	inst_call(jaddr20);
 }
 
+:CALL op2b_reg_rp 	is op1b_byte=0x61; op2b_b7=1 & op2b_b6=1 & op2b_reg_rp & op2b_lo=0xA
+{
+	inst_call(op2b_reg_rp);
+}
 
-:CALLT callt_addr is op1b_byte=0x61; callt_addr
+
+:CALLT callt_addr 	is op1b_byte=0x61; callt_addr
 {
 	inst_call(callt_addr);
 }
@@ -1584,6 +1727,13 @@ macro inst_bf(src, bit_sel, jmpaddr){
 
 #:EI
 #:DI
-#:HALT
-#:STOP
-#:PREFIX
+
+:HALT 					is op1b_byte=0x61; op2b_byte=0xED
+{
+	halt();
+}
+
+:STOP 					is op1b_byte=0x61; op2b_byte=0xFD
+{
+	stop();
+}
