@@ -381,7 +381,14 @@ macro bit_get(val, bit_index, dst){
 	dst = (tmp & 0x1);
 }
 
+#TODO: can I turn the 2 macro's below into 1? don't see why not?
 macro reg_stackarea_offset8(saptr, ptr_reg, adr){
+	saptr = 0x0F0000;
+	local tmp:3 = saptr | zext(ptr_reg);
+	saptr = tmp + adr;
+}
+
+macro reg_stackarea_offset16(saptr, ptr_reg, adr){
 	saptr = 0x0F0000;
 	local tmp:3 = saptr | zext(ptr_reg);
 	saptr = tmp + adr;
@@ -441,6 +448,7 @@ saddrp: loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 		{ export *[ram]:2 loc; }
 
 #TODO: replace all [HL+x] calls with hl_offset
+#TODO: figure out how to clean these up so that ghidra is less weird about offsets during disasm.
 hl_offset: [HL+adr8] is adr8 & HL 
 		{ local tmp:3 = 0xF0000:3 + zext(HL:2); 
 		  local loc:3 = tmp + zext(adr8:1);
@@ -451,6 +459,22 @@ hl_offset_word: [HL+adr8] is adr8 & HL
 		  local loc:3 = tmp + zext(adr8:1);
 		  export *[ram]:2 loc; }
 
+b_offset_byte: imm16[B] is imm16 & B
+		{ local tmp:3 = 0xF0000:3 + zext(BC:2);
+		  local loc:3 = tmp + zext(imm16:2);
+		  export *[ram]:1 loc;
+		}
+
+bc_offset_word: imm16[BC] is imm16 & BC
+		{ local tmp:3 = 0xF0000:3 + zext(BC:2);
+		  local loc:3 = tmp + zext(imm16:2);
+		  export *[ram]:2 loc;
+		}
+
+sp_offset_byte: [SP+adr8] is adr8 & SP
+		{ local loc:2 = zext(adr8:1) + SP;
+		  export *[stackarea]:1 loc; 
+		}
 
 #Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
@@ -462,7 +486,6 @@ hl_offset_word: [HL+adr8] is adr8 & HL
 
 #:MOV
 #TODO: The rest of MOV
-#TODO: CD, CE, and CF moves
 :MOV op1b_reg0," #"imm8	is op1b_hi=0x5 & op1b_b3!=0x1 & op1b_reg0; imm8 {
 	op1b_reg0 = imm8;
 }
@@ -523,13 +546,10 @@ hl_offset_word: [HL+adr8] is adr8 & HL
 	read_byte(A, addr);
 }
 
-:MOV [op1b_reg_rp + adr8],"#"imm8 	is op1b_hi=0xC & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8; imm8
+:MOV [op1b_reg_rp+adr8],"#"imm8 	is op1b_hi=0xC & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8; imm8
 {
 	local ptr:$(PTRSIZE) = 0x000000;
 	reg_stackarea_offset8(ptr, op1b_reg_rp, adr8);
-	#local tmp:2 = op1b_reg_rp;
-	#tmp = tmp + sext(adr8:1);
-	#ptr[0,16] = ptr[0,16] | tmp;
 	*:1 ptr = imm8;
 }
 
@@ -540,7 +560,7 @@ hl_offset_word: [HL+adr8] is adr8 & HL
 	*:1 ptr = A;
 }
 
-:MOV A,[op1b_reg_rp+adr8] 		is op1b_hi=0x8 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0; adr8 & A
+:MOV A,[op1b_reg_rp+adr8] 		is op1b_hi=0x8 & op1b_b3=1 & op1b_reg_rp & op1b_b0=0 & (op1b_reg_rp_dupe=1 | op1b_reg_rp_dupe=2); adr8 & A
 {
 	local ptr:$(PTRSIZE) = 0x0;
 	reg_stackarea_offset8(ptr, op1b_reg_rp, adr8);
@@ -594,9 +614,29 @@ hl_offset_word: [HL+adr8] is adr8 & HL
 	saddr=A;
 }
 
+:MOV A,b_offset_byte			is op1b_byte=0x09; b_offset_byte & A
+{
+	A = b_offset_byte;
+}
+
+:MOV b_offset_byte,A 			is op1b_byte=0x18; b_offset_byte & A
+{
+	b_offset_byte = A;
+}
+
+:MOV sp_offset_byte,A 			is op1b_byte=0x98; sp_offset_byte & A
+{
+	sp_offset_byte = A;
+}
+
+:MOV A,sp_offset_byte 			is op1b_byte=0x88; sp_offset_byte & A
+{
+	A=sp_offset_byte;
+}
 
 #:TODO: *
-#: 		XCH A, X
+#:XCH
+# 		XCH A, X
 macro inst_xch(dst, src){
 	local tmp = dst;
 	dst = src;
@@ -623,12 +663,17 @@ macro inst_xch(dst, src){
 }
 
 #:CLRB
-#TODO: etc
-#DONE:	CLRB !addr16
+#TODO: CLRB ES:!addr16
 :CLRB !addr16_1x 		is op1b_byte=0xF5; addr16_1x
 {
 	addr16_1x = 0x00;
 }
+
+:CLRB saddr 			is op1b_byte=0xF4; saddr
+{
+	saddr = 0x00;
+}
+
 
 :CLRB op1b_reg_axbc 	is op1b_hi=0xF & op1b_b3=0 & op1b_b2=0 & op1b_reg_axbc
 {
@@ -655,6 +700,11 @@ macro inst_xch(dst, src){
 #				movw [hl+byte], AX
 #				movw sfrp, AX
 #				movw AX, sfrp
+#				movw ax, saddrp
+#				movw saddrp, AX
+#				movw bc/de/hl, saddrp
+#				movw imm16[rp], ax
+#				movw ax, imm16[rp]
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -774,8 +824,28 @@ macro inst_xch(dst, src){
 	AX = saddrp;
 }
 
+:MOVW op1b_movw_rp,saddrp			is op1b_b7=1 & op1b_b6=1 & op1b_movw_rp & op1b_lo=0xA; saddrp
+{
+	op1b_movw_rp = saddrp;
+}
 
-#:XCHW
+:MOVW AX,bc_offset_word 			is op1b_byte=0x79; bc_offset_word & AX
+{
+	AX = bc_offset_word;
+}
+
+:MOVW bc_offset_word,AX 			is op1b_byte=0x78; bc_offset_word & AX
+{
+	bc_offset_word = AX;
+}
+
+
+:XCHW AX,op1b_2xreg 				is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=1 & AX
+{
+	local tmp:2 = AX;
+	AX = op1b_2xreg;
+	op1b_2xreg=tmp;
+}
 
 :ONEW op1b_reg_axbc 		is (op1b_byte=0xE6 | op1b_byte=0xE7) & op1b_reg_axbc
 {
@@ -843,6 +913,8 @@ macro inst_xch(dst, src){
 #TODO: *
 #DONE: or saddr, #byte
 #		or A, #byte
+# 		or A, reg
+# 		or reg, A
 macro inst_or(dst, src){
 	local tmp = 0x0;
 	tmp = dst | src;
@@ -860,6 +932,15 @@ macro inst_or(dst, src){
 	inst_or(A, imm8);
 }
 
+:OR A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x6 & op2b_b3=1 & op2b_reg0 & A
+{
+	inst_or(A,op2b_reg0);
+}
+
+:OR op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x6 & op2b_b3=0 & op2b_reg0 & A
+{
+	inst_or(op2b_reg0,A);
+}
 #:XOR
 
 #:CMP
@@ -871,6 +952,7 @@ macro inst_or(dst, src){
 #					cmp !addr16, #byte
 #					cmp a, saddr
 #					cmp saddr, imm8
+#					cmp A,[hl+byte]
 :CMP A,"#"imm8 	is op1b_byte=0x4C; imm8 & A {
 	cmp8_set_flags(A, imm8);
 }
@@ -902,6 +984,13 @@ macro inst_or(dst, src){
 {
 	cmp8_set_flags(saddr, imm8);
 }
+
+:CMP A,hl_offset 		is op1b_byte=0x4E; hl_offset & A
+{
+	cmp8_set_flags(A, hl_offset);
+}
+
+
 
 
 :CMP0 op1b_reg0 		is op1b_hi=0xD & op1b_b3=0 & op1b_reg0 & op1b_reg0_dupe<4 
@@ -938,6 +1027,7 @@ macro inst_or(dst, src){
 #DONE: addw AX, simm16
 #		addw AX, addr16
 #		addw SP, #byte
+# 		addw AX, rp
 :ADDW AX,"#"simm16 	is op1b_byte=0x04; simm16 & AX 
 {
 	addw_set_flags(AX, simm16);
@@ -953,6 +1043,12 @@ macro inst_or(dst, src){
 :ADDW SP,"#"imm8 	is op1b_byte=0x10; imm8 & SP 
 {
 	SP = SP + zext(imm8:1);
+}
+
+:ADDW AX,op1b_2xreg is op1b_hi=0x0 & op1b_2xreg & op1b_b0=1 & AX
+{
+	addw_set_flags(AX, op1b_2xreg);
+	AX = AX + op1b_2xreg;
 }
 
 #:SUBW
@@ -1006,7 +1102,14 @@ macro inst_or(dst, src){
 	cmpw_set_flags(AX, addr16_2x);
 }
 
-#:MULU
+#TODO: figure out how to make this less nasty without confusing the compiler:
+:MULU X (AX"="A"*X")			is op1b_byte=0xD6 & X & A & AX
+{
+	local Aext:2 = zext(A:1);
+	local Xext:2 = zext(X:1);
+	AX = Aext * Xext;
+}
+
 #:MULHU
 #:MULH
 #:DIVHU
@@ -1089,6 +1192,7 @@ macro inst_incw(dst){
 	*:2 ptr = tmp - 1;
 }
 
+#TODO: create right-shift macro
 :SHR A, op2b_bit_sel is op1b_byte=0x31; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xA & A
 {
 	local lobit:1 = 0;
@@ -1110,15 +1214,52 @@ macro inst_incw(dst){
 }
 
 #:SHL
-#:SHLW
+macro inst_shlw(reg, shiftamt){
+	local hibt:1=0;
+	local shiftcount:1 = 0;
+	local shifted:2 = reg;
+	<looptop>
+	hibit = shifted[15,1];
+	shiftcount = shiftcount+1;
+	shifted = shifted<<1;
+	if (shiftcount!=shiftamt) goto <looptop>;
+	$(CY_flag)= hibit[0,1];
+	reg = shifted;
+}
+
+:SHLW AX,op2b_hi_val 	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xD & op2b_hi!=0 & AX 
+{
+	inst_shlw(AX, op2b_hi_val);
+}
+
+:SHLW BC,op2b_hi_val 	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xC & op2b_hi!=0 & BC
+{
+	inst_shlw(BC, op2b_hi_val);
+}
 
 :SAR A,op2b_hi_val 	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xB & op2b_hi<0x8 & A {
 	sr_set_flags8(A, op2b_hi_val);
 	A = A s>> op2b_hi_val;
 } 
 
+macro inst_sarw(reg, shiftamt){
+	local lobit:1=0;
+	local shiftcount:1 = 0;
+	local shifted:2 = reg;
+	<looptop>
+	lobit = shifted[15,1];
+	shiftcount = shiftcount+1;
+	shifted = shifted s>> 1;
+	if (shiftcount!=shiftamt) goto <looptop>;
+	$(CY_flag)= lobit[0,1];
+	reg = shifted;
+}
 
-#:SARW
+:SARW AX,op2b_hi_val 	is op1b_byte=0x31; op2b_hi_val & op2b_lo=0xF & op2b_hi!=0 & AX
+{
+	inst_sarw(AX, op2b_hi_val);
+}
+
 #:ROR
 #:ROL
 #:RORC
