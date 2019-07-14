@@ -464,37 +464,37 @@ saddrp: loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #TODO: figure out how to clean these up so that ghidra is less weird about offsets during disasm.
 #TODO-URGENT: check if you screwed up with the offsets. these probably need sext, not zext
 hl_offset: [HL+adr8] is adr8 & HL 
-		{ local tmp:3 = 0xF0000:3 + zext(HL:2); 
+		{ local tmp:3 = 0xF0000:3 + sext(HL:2); 
 		  local loc:3 = tmp + zext(adr8:1);
 		  export *[ram]:1 loc; }
 
 hl_offset_word: [HL+adr8] is adr8 & HL 
-		{ local tmp:3 = 0xF0000:3 + zext(HL:2); 
+		{ local tmp:3 = 0xF0000:3 + sext(HL:2); 
 		  local loc:3 = tmp + zext(adr8:1);
 		  export *[ram]:2 loc; }
 
 b_offset_byte: imm16[B] is imm16 & B
-		{ local tmp:3 = 0xF0000:3 + zext(B:1);
+		{ local tmp:3 = 0xF0000:3 + sext(B:1);
 		  local loc:3 = tmp + zext(imm16:2);
 		  export *[ram]:1 loc;}
 
 c_offset_byte: imm16[C] is imm16 & C
-		{ local tmp:3 = 0xF0000:3 + zext(C:1);
+		{ local tmp:3 = 0xF0000:3 + sext(C:1);
 		  local loc:3 = tmp + zext(imm16:2);
 		  export *[ram]:1 loc;}
 
 bc_offset_word: imm16[BC] is imm16 & BC
-		{ local tmp:3 = 0xF0000:3 + zext(BC:2);
+		{ local tmp:3 = 0xF0000:3 + sext(BC:2);
 		  local loc:3 = tmp + zext(imm16:2);
 		  export *[ram]:2 loc;}
 
 sp_offset_byte: [SP+adr8] is adr8 & SP
-		{ local loc:2 = zext(adr8:1) + SP;
+		{ local loc:2 = sext(adr8:1) + SP;
 		  export *[stackarea]:1 loc; 
 		}
 
 sp_offset_word: [SP+adr8] is adr8 & SP
-		{ local loc:2 = zext(adr8:1) + SP;
+		{ local loc:2 = sext(adr8:1) + SP;
 		  export *[stackarea]:2 loc; 
 		}
 
@@ -677,9 +677,14 @@ macro inst_xch(dst, src){
 	src = tmp;
 }
 
-:XCH A, X 					is op1b_byte=0x08 & A & X
+:XCH A,X 					is op1b_byte=0x08 & A & X
 {
 	inst_xch(A, X);
+}
+
+:XCH A,op2b_reg0 			is op1b_byte=0x61; op2b_reg0 & op2b_reg0_dupe>1 & A
+{
+	inst_xch(A, op2b_reg0);
 }
 
 #:ONEB
