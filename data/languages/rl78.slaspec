@@ -24,14 +24,15 @@ define space register 	type=register_space size=1;
 #TODO: figure out how to cleanly implement register banks
 #TODO: refactor bunk register access logic, using pg. 3 of the data sheet as a reference
 #TODO: figure out how to use sleigh's carry operation, pretty sure thats available.
+#TODO: check literally every single operand namespace, you may have screwed up ordering
 
 #general purpose registers:
-define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
-define register offset= 0x00 size=2 [AX3   BC3   DE3   HL3];	#16-bit-mode bank3
-define register offset= 0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2]; 	# 8-bit-mode bank2
-define register offset= 0x08 size=2 [AX2   BC2   DE2   HL2];	#16-bit-mode bank2
-define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1]; 	# 8-bit-mode bank1
-define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];	#16-bit-mode bank1
+#define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
+#define register offset= 0x00 size=2 [AX3   BC3   DE3   HL3];	#16-bit-mode bank3
+#define register offset= 0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2]; 	# 8-bit-mode bank2
+#define register offset= 0x08 size=2 [AX2   BC2   DE2   HL2];	#16-bit-mode bank2
+#define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1]; 	# 8-bit-mode bank1
+#define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];	#16-bit-mode bank1
 define register offset= 0x18 size=1 [X  A  C  B  E  D  L  H]; 	# 8-bit-mode bank0
 define register offset= 0x18 size=2 [AX    BC    DE    HL];	 	#16-bit-mode bank0
 define register offset= 0x20 size=1 [RB0 RB1 RB2 RB3];			#dummy args for register banks
@@ -103,6 +104,7 @@ define token op1b (8)
 	op1b_reg_rp_dupe = (1,2)
 	op1b_movr = (4,5)
 	op1b_movr_dupe = (4,5)
+	op1b_setb_reg0 = (0,1) #special namespace for ONEB/CLRB
 
 	op1b_b7 = (7,7)
 	op1b_b6 = (6,6)
@@ -160,6 +162,7 @@ define token esbyte (8)
 define token data8 (8)
 	uadr8 = (0,7)
 	adr8_dupe = (0,7)
+	disp8 = (0,7) signed
 	adr8 = (0,7) signed
 	imm8 = (0,7)
 	simm8 = (0,7) signed
@@ -187,6 +190,7 @@ attach variables [op1b_reg_4_5]				[_ B C _];
 attach variables [op1b_reg_rp]				[_ DE HL _];
 attach variables [op1b_movw_rp]				[_ BC DE HL];
 attach variables [op1b_movr]				[_ X B C];
+attach variables [op1b_setb_reg0]			[X A C B];
 
 ##########################################################################
 #
@@ -462,39 +466,52 @@ saddrp: loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #TODO: add prefix operand to remove need for esmarker=0x11
 #TODO: replace all [HL+x] calls with hl_offset
 #TODO: figure out how to clean these up so that ghidra is less weird about offsets during disasm.
-#TODO-URGENT: check if you screwed up with the offsets. these probably need sext, not zext
-hl_offset: [HL+adr8] is adr8 & HL 
-		{ local tmp:3 = 0xF0000:3 + sext(HL:2); 
-		  local loc:3 = tmp + zext(adr8:1);
+#TODO: check if you screwed up with the offsets. seemm better now, but still need quadruple checking
+hl_offset: [HL+disp8] is disp8 & HL 
+		{ local tmp:2 = HL + sext(disp8:1);
+		  local loc:3 = 0xF0000:3 | zext(tmp);
 		  export *[ram]:1 loc; }
 
-hl_offset_word: [HL+adr8] is adr8 & HL 
-		{ local tmp:3 = 0xF0000:3 + sext(HL:2); 
-		  local loc:3 = tmp + zext(adr8:1);
+hl_offset_word: [HL+disp8] is disp8 & HL 
+		{ local tmp:2 = HL + sext(disp8:1);
+		  local loc:3 = 0xF0000:3 | zext(tmp);
 		  export *[ram]:2 loc; }
 
-b_offset_byte: imm16[B] is imm16 & B
-		{ local tmp:3 = 0xF0000:3 + sext(B:1);
-		  local loc:3 = tmp + zext(imm16:2);
-		  export *[ram]:1 loc;}
+b_offset_byte: disp16[B] is disp16 & B
+		{ local tmp:2 = disp16 + sext(B);
+		  local loc:3 = 0xF0000:3 | zext(tmp);
+		  export *[ram]:1 loc; }
 
-c_offset_byte: imm16[C] is imm16 & C
-		{ local tmp:3 = 0xF0000:3 + sext(C:1);
-		  local loc:3 = tmp + zext(imm16:2);
-		  export *[ram]:1 loc;}
+b_offset_word: disp16[B] is disp16 & B
+		{ local tmp:2 = disp16 + sext(B);
+		  local loc:3 = 0xF0000:3 | zext(tmp);
+		  export *[ram]:2 loc; }
 
-bc_offset_word: imm16[BC] is imm16 & BC
-		{ local tmp:3 = 0xF0000:3 + sext(BC:2);
-		  local loc:3 = tmp + zext(imm16:2);
-		  export *[ram]:2 loc;}
+c_offset_byte: disp16[C] is disp16 & C
+		{ local tmp:2 = disp16 + sext(C);
+		  local loc:3 = 0xF0000:3 | zext(tmp);
+		  export *[ram]:1 loc; }
 
-sp_offset_byte: [SP+adr8] is adr8 & SP
-		{ local loc:2 = sext(adr8:1) + SP;
+c_offset_word: disp16[C] is disp16 & C
+		{ local tmp:2 = disp16 + sext(C);
+		  local loc:3 = 0xF0000:3 | zext(tmp);
+		  export *[ram]:2 loc; }
+
+bc_offset_word: disp16[BC] is disp16 & BC
+		{ local tmp:2 = BC + disp16;
+		  local loc:3 = 0xF0000:3 | zext(tmp);
+		  export *[ram]:2 loc; }
+		#{ local tmp:3 = 0xF0000:3 + zext(BC:2);
+		#  local loc:3 = tmp + sext(disp16:2);
+		#  export *[ram]:2 loc;}
+
+sp_offset_byte: [SP+disp8] is disp8 & SP
+		{ local loc:2 = sext(disp8:1) + SP;
 		  export *[stackarea]:1 loc; 
 		}
 
-sp_offset_word: [SP+adr8] is adr8 & SP
-		{ local loc:2 = sext(adr8:1) + SP;
+sp_offset_word: [SP+disp8] is disp8 & SP
+		{ local loc:2 = sext(disp8:1) + SP;
 		  export *[stackarea]:2 loc; 
 		}
 
@@ -690,16 +707,16 @@ macro inst_xch(dst, src){
 #:ONEB
 #TODO: etc
 #DONE: ONEB !addr16
-#		oneb, axbc
+#		oneb, xacb
 # 		ONEB saddr
 :ONEB !addr16_1x 			is op1b_byte=0xE5; addr16_1x
 {
 	addr16_1x = 0x1:1;
 }
 
-:ONEB op1b_reg0		is op1b_hi=0xE & op1b_b3=0 & op1b_reg0 & op1b_b2=0
+:ONEB op1b_setb_reg0		is op1b_hi=0xE & op1b_b3=0 & op1b_b2=0 & op1b_setb_reg0
 {
-	op1b_reg0 = 0x1:1;
+	op1b_setb_reg0 = 0x1:1;
 }
 
 :ONEB saddr 		is op1b_byte=0xE4; saddr
@@ -720,9 +737,9 @@ macro inst_xch(dst, src){
 }
 
 
-:CLRB op1b_reg_axbc 	is op1b_hi=0xF & op1b_b3=0 & op1b_b2=0 & op1b_reg_axbc
+:CLRB op1b_setb_reg0 	is op1b_hi=0xF & op1b_b3=0 & op1b_b2=0 & op1b_setb_reg0
 {
-	op1b_reg_axbc = 0x00;
+	op1b_setb_reg0 = 0x00;
 }
 
 #:MOVS
@@ -780,18 +797,25 @@ macro inst_xch(dst, src){
 	addr16_2x = AX;
 }
 
-:MOVW imm16[op1b_reg_4_5],AX 	is (op1b_byte=0x58 | op1b_byte=0x68) & op1b_reg_4_5;
-							imm16 & AX 
+#TODO: can we combine b_offset_word and c_offset_word into 1 arg to reduce instruction definition count?
+:MOVW b_offset_word,AX 			is op1b_byte=0x58; b_offset_word & AX
 {
-	local ptr:$(PTRSIZE) = imm16 + zext(op1b_reg_4_5);
-	*:2 ptr = AX;
+	b_offset_word = AX;
 }
 
-:MOVW AX,imm16[op1b_reg_4_5] 	is (op1b_byte=0x59 | op1b_byte=0x69) & op1b_reg_4_5;
-								imm16 & AX
+:MOVW c_offset_word,AX 			is op1b_byte=0x68; c_offset_word & AX
 {
-	local ptr:$(PTRSIZE) = imm16 + zext(op1b_reg_4_5);
-	AX = *:2 ptr;
+	c_offset_word = AX;
+}
+
+:MOVW AX,b_offset_word 			is op1b_byte=0x59; b_offset_word & AX
+{
+	AX = b_offset_word;
+}
+
+:MOVW AX,c_offset_word 			is op1b_byte=0x69; c_offset_word & AX
+{
+	AX = c_offset_word;
 }
 
 :MOVW op1b_movw_rp,!addr16 		is op1b_b7=1 & op1b_b6=1 & op1b_movw_rp & op1b_lo=0xB & op1b_movw_rp_dupe!=0; addr16
@@ -1650,7 +1674,14 @@ macro inst_xor1(src, bit_sel){
 	addr16_1x = tmp;
 }
 
-:SET1 sfr_raw1"."op2b_bit_sel 		is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xA; sfr_raw1
+:SET1 op3b_sfr"."op2b_bit_sel 		is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xA; op3b_hi=0xF & op3b_b3=1 & op3b_sfr
+{
+	local tmp:1 = op3b_sfr;
+	bit_set_to(tmp, op2b_bit_sel, 1);
+	op3b_sfr = tmp;
+}
+
+:SET1 sfr_raw1"."op2b_bit_sel 		is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xA; sfr_raw1 & uadr8<0xF8 
 {
 	local tmp:1 = sfr_raw1;
 	bit_set_to(tmp, op2b_bit_sel, 1);
