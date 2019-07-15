@@ -457,6 +457,8 @@ sfr_raw1: "sfr:"loc is uadr8 [loc = 0x0FFF00 + uadr8; ]
 sfr_raw2: "sfr:"loc is uadr8 [ loc = 0x0FFF00 + uadr8; ]
 		{ export *[ram]:2 loc; }
 
+
+#TODO: fix the range for which saddr/saddrp is accessible. See G13 docs, page 158
 saddr: 	loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 		{ export *[ram]:1 loc; }
 
@@ -467,6 +469,17 @@ saddrp: loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #TODO: replace all [HL+x] calls with hl_offset
 #TODO: figure out how to clean these up so that ghidra is less weird about offsets during disasm.
 #TODO: check if you screwed up with the offsets. seemm better now, but still need quadruple checking
+
+hl_ptr_byte: [HL] is HL 
+		{ local ptr:$(PTRSIZE) = 0xF0000;
+		  ptr = ptr | zext(HL);
+		  export *:1 ptr;}
+
+hl_ptr_word: [HL] is HL
+		{ local ptr:$(PTRSIZE) = 0xF0000;
+		  ptr = ptr | zext(HL);
+		  export *:2 ptr;}
+
 hl_offset: [HL+disp8] is disp8 & HL 
 		{ local tmp:2 = HL + sext(disp8:1);
 		  local loc:3 = 0xF0000:3 | zext(tmp);
@@ -568,6 +581,7 @@ sp_offset_word: [SP+disp8] is disp8 & SP
 	read_byte(A, op1b_reg_dehl);
 }
 
+#todo: confirm that offset is calculated correctly here. seems like its not.
 :MOV A,ES":["op1b_reg_dehl"]" is esmarker=0x11; 
 			op1b_hi=0x8 & op1b_b3=1 & op1b_b2=0 & op1b_reg_dehl & op1b_b0=1
 			& A & ES
@@ -683,6 +697,11 @@ sp_offset_word: [SP+disp8] is disp8 & SP
 :MOV A,sp_offset_byte 			is op1b_byte=0x88; sp_offset_byte & A
 {
 	A=sp_offset_byte;
+}
+
+:MOV c_offset_byte,"#"imm8 		is op1b_byte=0x38; c_offset_byte; imm8
+{
+	c_offset_byte=imm8;
 }
 
 #:TODO: *
@@ -948,6 +967,7 @@ macro inst_xch(dst, src){
 #TODO: All of add except ADD reg, reg
 # 						ADD A, imm8
 #						ADD A, [hl+adr8]
+# 						ADD saddr, imm8
 :ADD A,op2b_reg0 		is op1b_byte=0x61; op2b_hi=0x0 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=0x1 & A
 {
 	add_set_flags(A, op2b_reg0);
@@ -972,10 +992,17 @@ macro inst_xch(dst, src){
 	A = A + hl_offset;
 }
 
+:ADD saddr,"#"imm8			is op1b_byte=0x0A; saddr; imm8
+{
+	add_set_flags(saddr, imm8:1);
+	saddr = saddr + imm8;
+}
+
 #TODO: *
 #DONE:  ADDC A, r
 #		ADDC r, A
 # 		A, #byte
+# 		ADDC saddr, imm8
 :ADDC A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x1 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=1 & A
 {
 	local tmp:1 = op2b_reg0 + $(CY_flag);
@@ -998,12 +1025,19 @@ macro inst_xch(dst, src){
 
 }
 
+:ADDC saddr,"#"imm8 		is op1b_byte=0x1A; saddr; imm8
+{
+	add_set_flags(saddr, imm8:1);
+	saddr = saddr + imm8;
+}
+
 #:SUB
 #TODO: figure out AC and CY? CY is prolly wrong here anyway
 #TODO: *
 #DONE: 	sub a, [hl+byte]
 #		sub a, r
 #		sub r, a
+#		sub A, !addr16
 macro inst_sub(dst, src){
 	local tmp:1 = dst - src;
 	$(Z_flag) = (tmp == 0);
@@ -1016,7 +1050,7 @@ macro inst_sub(dst, src){
 	inst_sub(A, hl_offset);
 }
 
-:SUB A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x2 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=0 & A
+:SUB A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x2 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=1 & A
 {
 	inst_sub(A,op2b_reg0);
 }
@@ -1024,6 +1058,11 @@ macro inst_sub(dst, src){
 :SUB op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x2 & op2b_b3=0 & op2b_reg0 & A
 {
 	inst_sub(op2b_reg0,A);
+}
+
+:SUB A,!addr16_1x 			is op1b_byte=0x2F; addr16_1x & A
+{
+	inst_sub(A, addr16_1x);
 }
 
 #:SUBC
@@ -1058,6 +1097,8 @@ macro inst_subc(dst, src){
 #		and a, addr16_1x
 #		and a [hl+byte]
 # 		and saddr, #byte
+# 		and reg, A
+#		and A, reg
 macro inst_and(dst, src){
 	local tmp = dst & src;
 	$(Z_flag) = (tmp == 0);
@@ -1086,6 +1127,16 @@ macro inst_and(dst, src){
 :AND saddr,"#"imm8 			is op1b_byte=0x5A; saddr; imm8
 {
 	inst_and(saddr,imm8);
+}
+
+:AND A,op2b_reg0 			is op1b_byte=0x61; op2b_hi=0x5 & op2b_b3=1 & op2b_reg0 & op2b_reg0_dupe!=1 & A
+{
+	inst_and(A, op2b_reg0);
+}
+
+:AND op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x5 & op2b_b3=0 & op2b_reg0 & A
+{
+	inst_and(op2b_reg0, A);
 }
 
 #:OR
@@ -1146,6 +1197,7 @@ macro inst_or(dst, src){
 #DONE:	XOR A,r
 #		XOR r,A
 #		XOR A,#byte
+#		xor a,saddr
 macro inst_xor(dst, src){
 	$(Z_flag) = (dst == src);
 	dst = (dst ^ src);
@@ -1166,6 +1218,10 @@ macro inst_xor(dst, src){
 	inst_xor(A,imm8);
 }
 
+:XOR A,saddr 				is op1b_byte=0x7B; saddr & A
+{
+	inst_xor(A, saddr);
+}
 #:CMP
 #TODO: Check if CMP operands are in wrong order in macro. ISA is unclear.
 #TODO: Rest of CMP
@@ -1178,6 +1234,7 @@ macro inst_xor(dst, src){
 #					cmp A,[hl+byte]
 #					cmp A, !addr16
 #					cmp !add16, #byte
+#					cmp A, [hl]
 :CMP A,"#"imm8 	is op1b_byte=0x4C; imm8 & A {
 	cmp8_set_flags(A, imm8);
 }
@@ -1223,6 +1280,11 @@ macro inst_xor(dst, src){
 :CMP ES:!addr16_1x,"#"imm8 	is esmarker=0x11; op1b_byte=0x40; addr16_1x; imm8 & ES
 {
 	todo();
+}
+
+:CMP A,hl_ptr_byte 			is op1b_byte=0x4D & A & hl_ptr_byte
+{
+	cmp8_set_flags(A, hl_ptr_byte);
 }
 
 
@@ -1300,6 +1362,7 @@ macro inst_xor(dst, src){
 #DONE: subw AX, #imm16
 #		SUBW AX, rp
 #		SUBW SP, #imm8
+#		subw AX, !addr16
 :SUBW AX,"#"imm16 	is op1b_byte=0x24; imm16 & AX
 {
 	subw_set_flags(AX,imm16);
@@ -1323,6 +1386,12 @@ macro inst_xor(dst, src){
 	local tmp:2 = sext(imm8:1);
 	subw_set_flags(SP,tmp);
 	SP = SP - tmp;
+}
+
+:SUBW AX,!addr16_2x 	is op1b_byte=0x22; addr16_2x & AX
+{
+	subw_set_flags(AX, addr16_2x);
+	AX = AX - addr16_2x;
 }
 
 #:CMPW
@@ -1584,12 +1653,14 @@ macro inst_rolwc(dst){
 }
 
 #:MOV1
+#TODO: clean up with macros, this is nasty
 #TODO: 	all mov1 except mov1 CY, A.x
 #						mov1 sfr.x, CY
 #						mov1 CY, [HL].x
 #						mov1 [HL].x, CY
 #						MOV1 CY, saddr.x
 #						MOV1 saddr.x, CY
+#						MOV1 A.x, CY
 :MOV1 op3b_sfr"."op2b_bit_sel,"CY" 	is op1b_byte=0x71; op2b_b7=0x0 & op2b_bit_sel & op2b_lo=0x9; op3b_hi=0xF & op3b_b3=1 & op3b_sfr
 {
 	local tmp = op3b_sfr;
@@ -1635,8 +1706,54 @@ macro inst_rolwc(dst){
 	bit_get(saddr, op2b_bit_sel, tmp);
 	$(CY_flag) = tmp[0,1];
 }
+
+:MOV1 A"."op2b_bit_sel",CY" 		is op1b_byte=0x71; op2b_b7=1 & op2b_bit_sel & op2b_lo=0x9 & A
+{
+	local tmp:1 = $(CY_flag);
+	bit_set_to(A, op2b_bit_sel, tmp);
+}
+
 #:AND1
+#TODO: *
+#DONE: 	CY, A.x
+#		CY,	sfr.x 
+macro inst_and1(src, bit_sel){
+	local bit:1 = 0;
+	bit_get(src, bit_sel, bit);
+	bit = bit & $(CY_flag);
+	$(CY_flag) = bit;
+}
+
+:AND1 "CY,"A"."op2b_bit_sel 		is op1b_byte=0x71; op2b_b7=1 & op2b_bit_sel & op2b_lo=0xD & A
+{
+	inst_and1(A, op2b_bit_sel);
+}
+
+:AND1 "CY,"op3b_sfr"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xD; op3b_hi=0xF & op3b_b3=1 & op3b_sfr
+{
+	inst_and1(op3b_sfr, op2b_bit_sel);
+}
+
+:AND1 "CY,"sfr_raw1"."op2b_bit_sel 	is op1b_byte=0x71; op2b_b7=0 & op2b_bit_sel & op2b_lo=0xD; sfr_raw1 & uadr8<0xF8
+{
+	inst_and1(sfr_raw1, op2b_bit_sel);
+}
+
+
 #:OR1
+#TODO: *
+#done: or1 cy, a.x
+macro inst_or1(src, bit_sel){
+	local bit:1 = 0;
+	bit_get(src, bit_sel, bit);
+	bit = bit | $(CY_flag);
+	$(CY_flag) = bit;
+}
+
+:OR1 "CY,"A"."op2b_bit_sel 			is op1b_byte=0x71; op2b_b7=1 & op2b_bit_sel & op2b_lo=0xE & A
+{
+	inst_or1(A, op2b_bit_sel);
+}
 
 #:XOR1
 #TODO: *
@@ -1823,9 +1940,6 @@ macro inst_call(targ_func){
 {
 	pop(PSW);
 }
-#:MOVW
-#:ADDW
-#:SUBW
 
 #:BR
 #TODO: need to modify PC here too?
