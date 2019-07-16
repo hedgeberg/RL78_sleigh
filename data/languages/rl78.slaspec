@@ -677,10 +677,10 @@ sp_offset_word: [SP+disp8] is disp8 & SP
 	op1b_movr = addr16_1x;
 }
 
-:MOV op1b_movr,ES:!addr16_1x 	is esmarker=0x11; op1b_b7=1 & op1b_b6=1 & op1b_movr & op1b_lo=0x9 & 
-					op1b_movr_dupe!=0; addr16_1x & ES
+:MOV op1b_movr,es_addr16_byte 	is esmarker=0x11; op1b_b7=1 & op1b_b6=1 & op1b_movr & op1b_lo=0x9 & 
+					op1b_movr_dupe!=0; es_addr16_byte
 {
-	todo();
+	op1b_movr = es_addr16_byte;
 }
 
 
@@ -1342,9 +1342,9 @@ macro inst_xor(dst, src){
 	cmp8_set_flags(A, addr16_1x);
 }
 
-:CMP ES:!addr16_1x,"#"imm8 	is esmarker=0x11; op1b_byte=0x40; addr16_1x; imm8 & ES
+:CMP es_addr16_byte,"#"imm8 	is esmarker=0x11; op1b_byte=0x40; es_addr16_byte; imm8
 {
-	todo();
+	cmp8_set_flags(es_addr16_byte, imm8);
 }
 
 :CMP A,hl_ptr_byte 			is op1b_byte=0x4D & A & hl_ptr_byte
@@ -1374,9 +1374,11 @@ macro inst_xor(dst, src){
 	$(Z_flag)  = (saddr == 0x0);
 }
 
-:CMP0 ES:!addr16_1x 	is op1b_byte=0x11; op2b_byte=0xD5; addr16_1x & ES
+:CMP0 es_addr16_byte 	is op1b_byte=0x11; op2b_byte=0xD5; es_addr16_byte
 {
-	todo();
+	$(AC_flag) = 0;
+	$(CY_flag) = 0;
+	$(Z_flag)  = (es_addr16_byte == 0);
 }
 
 
