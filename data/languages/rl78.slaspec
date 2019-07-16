@@ -470,6 +470,32 @@ saddrp: loc is uadr8 [ loc = 0xFFF00 + uadr8; ]
 #TODO: figure out how to clean these up so that ghidra is less weird about offsets during disasm.
 #TODO: check if you screwed up with the offsets. seemm better now, but still need quadruple checking
 
+#TODO: collapse # of argument definitions using context registers?
+es_hl_b_byte: ES:[HL+B] is HL & B & ES
+		{ local ptr = 0:3;
+		  ptr[0,16] = HL + sext(B);
+		  ptr[16,4] = ES[0,4]; 
+		  export *:1 ptr; }
+
+es_addr16_byte: ES:!imm16 is imm16 & ES 
+		{ local ptr = 0:3;
+		  ptr[0,16] = imm16;
+		  ptr[16,4] = ES[0,4]; 
+		  export *:1 ptr; }
+
+es_addr16_word: ES:!imm16 is imm16 & ES
+		{ local ptr = 0:3;
+		  ptr[0,16] = imm16;
+		  ptr[16,4] = ES[0,4]; 
+		  export *:2 ptr; }
+
+es_hl_ofst_byte: ES:[HL+adr8] is adr8 & ES & HL
+		{ local ptr:$(PTRSIZE) = 0x0;
+		  ptr[16,4] = ES[0,4];
+		  ptr[0,16] = HL;
+		  ptr = ptr + sext(adr8:1);
+		  export *:1 ptr; }
+
 hl_ptr_byte: [HL] is HL 
 		{ local ptr:$(PTRSIZE) = 0xF0000;
 		  ptr = ptr | zext(HL);
@@ -704,6 +730,21 @@ sp_offset_word: [SP+disp8] is disp8 & SP
 	c_offset_byte=imm8;
 }
 
+:MOV A,es_addr16_byte 			is esmarker=0x11; op1b_byte=0x8F; es_addr16_byte & A
+{
+	A = es_addr16_byte;
+}
+
+:MOV A,es_hl_b_byte 			is esmarker=0x11; op1b_byte=0x61; op2b_byte=0xC9 & A & es_hl_b_byte
+{
+	A = es_hl_b_byte;
+}
+
+:MOV c_offset_byte,A 			is op1b_byte=0x28; c_offset_byte & A
+{
+	c_offset_byte=A;
+}
+
 #:TODO: *
 #:XCH
 # 		XCH A, X
@@ -789,6 +830,7 @@ macro inst_xch(dst, src){
 #				movw saddrp, word
 #				movw AX, [SP+addr8]
 #				movw [SP+addr8], AX
+#				movw HL, ES:!addr16
 :MOVW op1b_2xreg," #"imm16 	is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=0; imm16{
 	op1b_2xreg = imm16;
 }
@@ -945,6 +987,11 @@ macro inst_xch(dst, src){
 	sp_offset_word = AX;
 }
 
+:MOVW HL,es_addr16_word 			is esmarker=0x11; es_addr16_word & HL
+{
+	HL = es_addr16_word;
+}
+
 
 :XCHW AX,op1b_2xreg 				is op1b_hi=0x3 & op1b_b3=0 & op1b_2xreg & op1b_b0=1 & AX
 {
@@ -1038,6 +1085,7 @@ macro inst_xch(dst, src){
 #		sub a, r
 #		sub r, a
 #		sub A, !addr16
+#		SUB A, ES:[HL+B]
 macro inst_sub(dst, src){
 	local tmp:1 = dst - src;
 	$(Z_flag) = (tmp == 0);
@@ -1065,10 +1113,17 @@ macro inst_sub(dst, src){
 	inst_sub(A, addr16_1x);
 }
 
+:SUB A,es_hl_b_byte 		is esmarker=0x11; op1b_byte=0x61; op2b_byte=0xA0 & A & es_hl_b_byte
+{
+	inst_sub(A, es_hl_b_byte);
+}
+
 #:SUBC
 #TODO: *
 #DONE: 	SUBC A,r
 #		SUBC r,A
+#		SUBC saddr,imm8
+#		SUBC A,saddr
 macro inst_subc(dst, src){
 	#TODO: figure out how tf the AC flag actually works
 	local tmp:1 = dst - src;
@@ -1088,6 +1143,16 @@ macro inst_subc(dst, src){
 :SUBC op2b_reg0,A 			is op1b_byte=0x61; op2b_hi=0x3 & op2b_b3=0 & op2b_reg0 & A
 {
 	inst_subc(op2b_reg0,A);
+}
+
+:SUBC saddr,"#"imm8			is op1b_byte=0x3A; saddr; imm8
+{
+	inst_subc(saddr,imm8);
+}
+
+:SUBC A,saddr 				is op1b_byte=0x3B; saddr & A
+{
+	inst_subc(A,saddr);
 }
 
 #:AND
