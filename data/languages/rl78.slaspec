@@ -35,7 +35,7 @@ define space register 	type=register_space size=1;
 #define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];	#16-bit-mode bank1
 define register offset= 0x18 size=1 [X  A  C  B  E  D  L  H]; 	# 8-bit-mode bank0
 define register offset= 0x18 size=2 [AX    BC    DE    HL];	 	#16-bit-mode bank0
-define register offset= 0x20 size=1 [RB0 RB1 RB2 RB3];			#dummy args for register banks
+#define register offset= 0x20 size=1 [RB0 RB1 RB2 RB3];			#dummy args for register banks
 
 #special purpose registers
 define register offset=0x40 size=3 [PC]; #I Think this is right??? they don't specify
@@ -553,8 +553,6 @@ sp_offset_word: [SP+disp8] is disp8 & SP
 		{ local loc:2 = sext(disp8:1) + SP;
 		  export *[stackarea]:2 loc; 
 		}
-
-#Imm16Swap: val is imm16_lo; imm16_hi [val=val|imm16_hi; val=val<<8; val=val|imm16_lo;] {export val;}
 
 ##########################################################################
 #

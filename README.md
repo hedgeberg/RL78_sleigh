@@ -1,7 +1,7 @@
 GHIDRA RL78
 ===========
 
-WIP RL78 implementation for Ghidra SRE. This repo should now be at the point of being at least somewhat usable for reversing RL78, but has a long way to go. Pull requests would be appreciated.
+WIP RL78 implementation for Ghidra SRE. This repo should now be at the point of being at least somewhat usable for reversing RL78. Pull requests and issue submissions would be appreciated.
 
 ![Screenshot of current disassembly](https://raw.githubusercontent.com/hedgeberg/RL78_sleigh/master/images/rl78_state.png)
 
@@ -15,18 +15,18 @@ Follow the setup instructions as explained in [Ghidra_Falcon](https://github.com
 Status
 ------
 
-What works rn: 
-+	Disassembles all of the code in the main path of the provided test.bin, with some manual relocation etc. Sample project is included in the ghidra_work folder.
-+ 	Decompiler handles basic flow correctly (but still has a looooooong way to go)
+What works:
++	Disassembles all code in the test binary, to some degree of accuracy. Has known bugs, but it mostly functions. Sample project is included in the ghidra_work folder.
++ 	Decompiler handles basic flow correctly (but still has a looooooong way to go, switch idioms in particular are messy)
 + 	A lot of auto-discovered memory offsets are good as-is, but some leave a lot to be desired.  
 
 What doesn't work yet:
-+ 	Large body of instructions still unimplemented
++ 	Large body of instructions still unimplemented, but none of the most common ones.
 +	Decompiler output is full of nastiness, as no work has been done on refining this
 + 	Stack and RAM had to be separated, as Ghidra gets confused by the fact that the stack pointer doesn't actually line up with the area being referenced. This may be a more fundamental ghidra issue that needs some modifications to the codebase before a cleaner, more unified memory map can be designed.
-+ 	My brain is still bad at writing clean code that isn't full of awful artifacts and I'm sorry.
 
 What's on the docket:
++ 	Adding context register functionality to enable register banking.
 + 	Implementing the remainder of the ISA
 + 	Huge amount of cleanup work in the .slaspec file, it's super messy
 +	Experimenting with a basic loader
