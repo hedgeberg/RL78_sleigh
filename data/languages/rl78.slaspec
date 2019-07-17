@@ -27,12 +27,12 @@ define space register 	type=register_space size=1;
 #TODO: check literally every single operand namespace, you may have screwed up ordering
 
 #general purpose registers:
-#define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
-#define register offset= 0x00 size=2 [AX3   BC3   DE3   HL3];	#16-bit-mode bank3
-#define register offset= 0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2]; 	# 8-bit-mode bank2
-#define register offset= 0x08 size=2 [AX2   BC2   DE2   HL2];	#16-bit-mode bank2
-#define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1]; 	# 8-bit-mode bank1
-#define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];	#16-bit-mode bank1
+define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3]; 	# 8-bit-mode bank3
+define register offset= 0x00 size=2 [AX3   BC3   DE3   HL3];	#16-bit-mode bank3
+define register offset= 0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2]; 	# 8-bit-mode bank2
+define register offset= 0x08 size=2 [AX2   BC2   DE2   HL2];	#16-bit-mode bank2
+define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1]; 	# 8-bit-mode bank1
+define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];	#16-bit-mode bank1
 define register offset= 0x18 size=1 [X  A  C  B  E  D  L  H]; 	# 8-bit-mode bank0
 define register offset= 0x18 size=2 [AX    BC    DE    HL];	 	#16-bit-mode bank0
 #define register offset= 0x20 size=1 [RB0 RB1 RB2 RB3];			#dummy args for register banks
@@ -41,6 +41,14 @@ define register offset= 0x18 size=2 [AX    BC    DE    HL];	 	#16-bit-mode bank0
 define register offset=0x40 size=3 [PC]; #I Think this is right??? they don't specify
 define register offset=0x50 size=2 [SP      _     _     _      ];
 define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
+define register offset=0x60 size=4 [contextreg _]; # dumb hack to help the context reg dealio
+
+
+define context contextreg
+	banksel = (0,1)
+;
+
+
 
 #TODO: change to using bitranges, once its fixed
 #define bitrange IE=PSW[7,1] Z=PSW[6,1] RBS1=PSW[5,1] AC=PSW[4,1] RBS0=PSW[3,1] 
@@ -90,6 +98,11 @@ define token op1b (8)
 	op1b_lo3 = (0,2)
 
 	op1b_reg0 = (0,2)
+	bank0 = (0,2)
+	bank1 = (0,2)
+	bank2 = (0,2)
+	bank3 = (0,2)
+	op1b_reg0_bseltest = (0,2)
 	op1b_reg_4_5 = (4,5)
 	op1b_reg0_dupe = (0,2)
 	op1b_2xreg = (1,2)
@@ -191,6 +204,16 @@ attach variables [op1b_reg_rp]				[_ DE HL _];
 attach variables [op1b_movw_rp]				[_ BC DE HL];
 attach variables [op1b_movr]				[_ X B C];
 attach variables [op1b_setb_reg0]			[X A C B];
+
+Reg1: bank0 is banksel=0 & bank0 {export bank0;}
+Reg1: bank1 is banksel=1 & bank1 {export bank1;}
+Reg1: bank2 is banksel=2 & bank2 {export bank2;}
+Reg1: bank3 is banksel=3 & bank3 {export bank3;}
+
+attach variables [bank0] [X A C B E D L H];
+attach variables [bank1] [X1 A1 C1 B1 E1 D1 L1 H1];
+attach variables [bank2] [X2 A2 C2 B2 E2 D2 L2 H2];
+attach variables [bank3] [X3 A3 C3 B3 E3 D3 L3 H3];
 
 ##########################################################################
 #
@@ -562,8 +585,8 @@ sp_offset_word: [SP+disp8] is disp8 & SP
 
 #:MOV
 #TODO: The rest of MOV
-:MOV op1b_reg0," #"imm8	is op1b_hi=0x5 & op1b_b3!=0x1 & op1b_reg0; imm8 {
-	op1b_reg0 = imm8;
+:MOV Reg1," #"imm8	is op1b_hi=0x5 & op1b_b3!=0x1 & Reg1; imm8 {
+	Reg1 = imm8;
 }
 
 :MOV A,op1b_reg0 		is op1b_hi=0x6 & op1b_b3!=0x1 & op1b_reg0 & op1b_lo3!=0x1 & A {
@@ -2169,7 +2192,7 @@ macro inst_bf(src, bit_sel, jmpaddr){
 	goto inst_next;
 }
 
-:SEL "RB"op2b_reg_rbsel			is op1b_byte=0x61; op2b_hi2=0x3 & op2b_reg_rbsel & op2b_lo=0xF
+:SEL "RB"op2b_reg_rbsel			is op1b_byte=0x61; op2b_hi2=0x3 & op2b_reg_rbsel & op2b_lo=0xF [banksel=op2b_reg_rbsel; globalset()]
 {
 	$(RBS1_flag) = ((op2b_reg_rbsel>>1)&0x1);
 	$(RBS0_flag) = op2b_reg_rbsel&0x1;
