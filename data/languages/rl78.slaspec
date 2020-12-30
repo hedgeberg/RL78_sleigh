@@ -206,13 +206,25 @@ macro inst_xor(dst, src) {
 
 macro inst_cmp(dst, src) {
     Z = (dst - src) == 0;
-    AC = (dst & 0x08) > (src & 0x08);
-    CY = (dst & 0x80) > (src & 0x80);
+    AC = (dst & 0x08) >= (src & 0x08);
+    CY = (dst & 0x80) >= (src & 0x80);
+}
+
+macro inst_cmp0(dst) {
+    Z = dst == 0;
+    AC = 0;
+    CY = 0;
+}
+
+macro inst_cmps(dst, src) {
+    Z = (dst - src) == 0;
+    CY = (Z != 0) | (A == 0) | (dst == 0);
+    AC = (dst & 0x08) >= (src & 0x08);
 }
 
 macro update_psw(data) {
     # Update PSW as expected
-    PSW         = data;
+    PSW    = data;
     # Then split it apart into the shadow registers
     # for use during decompilation
     IE     = (data & 0x80) >> 7;
@@ -575,6 +587,65 @@ AddrHLOffsetC: [HL+C] is HL & C {
 # CMP r, A
 :CMP sreg2_byte, A is opcode=0x61 & A; op2_h=0x8 & sreg2_byte {
     inst_cmp(sreg2_byte, A);
+}
+
+#
+# Table 11/30
+#
+
+# CMP A, saddr
+:CMP A, saddr is opcode=0x4B & A; saddr {
+    inst_cmp(A, saddr);
+}
+
+# CMP A, !addr16
+:CMP A, addr16 is opcode=0x4F & A; addr16 {
+    inst_cmp(A, addr16);
+}
+
+# CMP A, [HL]
+:CMP A, AddrHL is opcode=0x4D & A & AddrHL {
+    inst_cmp(A, AddrHL);
+}
+
+# CMP A, [HL+byte]
+:CMP A, AddrHLOffset is opcode=0x4E & A; AddrHLOffset {
+    inst_cmp(A, AddrHLOffset);
+}
+
+# CMP A, [HL+B]
+:CMP A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xC0 & AddrHLOffsetB {
+    inst_cmp(A, AddrHLOffsetB);
+}
+
+# CMP A, [HL+C]
+:CMP A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xC2 & AddrHLOffsetC {
+    inst_cmp(A, AddrHLOffsetC);
+}
+
+# CMP !addr16, #byte
+:CMP addr16, u8 is opcode=0x40; addr16; u8 {
+    inst_cmp(addr16, u8);
+}
+
+# CMP0, r
+:CMP0 dreg_axbc is op_h=0xD & dreg_axbc {
+    inst_cmp0(dreg_axbc);
+}
+
+# CMP0 saddr
+:CMP0 saddr is opcode=0xD4; saddr {
+    inst_cmp0(saddr);
+}
+
+# CMP0 !addr16
+:CMP0 addr16 is opcode=0xD5; addr16 {
+    inst_cmp0(addr16);
+}
+
+# CMPS X, [HL+byte]
+:CMPS X, AddrHLOffset is opcode=0x61 & X; opcode=0xDE; AddrHLOffset {
+    inst_cmps(X, AddrHLOffset);
 }
 
 #
