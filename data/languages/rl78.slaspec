@@ -55,17 +55,16 @@ define pcodeop invalid;
 #########################################################################
 
 define token base (8)
-    byte1 = (0, 7)
-    op = (4, 7)
+    opcode = (0, 7)
+    op_h = (4, 7)
     dreg_byte = (0, 2)
+    dreg_axbc = (0, 1)
     sreg_byte = (0, 2);
 attach variables [ dreg_byte sreg_byte ] [X A C B E D L H];
-
-define token base2 (8)
-    byte2 = (0, 7)
-    data2 = (0, 7);
+attach variables [ dreg_axbc ] [X A C B];
 
 define token data8 (8)
+    data = (0, 7)
     uaddr8 = (0, 7);
 
 define token data16 (16)
@@ -113,63 +112,68 @@ addr16: loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
 #
 #########################################################################
 
-:NOP is byte1=0x00 {}
+:NOP is opcode=0x00 {}
 
-:HALT is byte1=0x61; byte2=0xED { halt(); }
+:HALT is opcode=0x61; opcode=0xED { halt(); }
 
-:STOP is byte1=0x61; byte2=0xFD { stop(); }
+:STOP is opcode=0x61; opcode=0xFD { stop(); }
 
 # MOV r, #byte
-:MOV dreg_byte, "#"data2 is op=0x5 & dreg_byte; data2 {
-    dreg_byte = data2;
+:MOV dreg_byte, "#"data is op_h=0x5 & dreg_byte; data {
+    dreg_byte = data;
 }
 
 # MOV A, r
-:MOV A, sreg_byte is op=0x6 & A & sreg_byte {
+:MOV A, sreg_byte is op_h=0x6 & A & sreg_byte {
     A = sreg_byte;
 }
 
 # MOV r, A
-:MOV dreg_byte, A is op=0x7 & A & dreg_byte {
+:MOV dreg_byte, A is op_h=0x7 & A & dreg_byte {
     dreg_byte = A;
 }
 
+# MOV saddr, #byte
+:MOV saddr, "#"data is opcode=0xCD; saddr; data {
+    saddr = data;
+}
+
 # INC r
-:INC dreg_byte is op=0x8 & dreg_byte {
+:INC dreg_byte is op_h=0x8 & dreg_byte {
     inst_inc(dreg_byte);
 }
 
 # DEC r
-:DEC dreg_byte is op=0x9 & dreg_byte {
+:DEC dreg_byte is op_h=0x9 & dreg_byte {
     inst_dec(dreg_byte);
 }
 
 # ONEB r
-:ONEB dreg_byte is op=0xE & dreg_byte {
-    dreg_byte = 1;
+:ONEB dreg_axbc is op_h=0xE & dreg_axbc {
+    dreg_axbc = 1;
 }
 
 # ONEB saddr
-:ONEB saddr is op=0xE & dreg_byte=0x4; saddr {
+:ONEB saddr is opcode=0xE4; saddr {
     saddr = 1; 
 }
 
-# ONEB !addr16
-:ONEB "!"addr16 is op=0xE & dreg_byte=0x5; addr16 {
+# ONEB !addr1s6
+:ONEB "!"addr16 is opcode=0xE5; addr16 {
     addr16 = 1;
 }
 
 # CLRB r
-:CLRB dreg_byte is op=0xF & dreg_byte {
-    dreg_byte = 0;
+:CLRB dreg_axbc is op_h=0xF & dreg_axbc {
+    dreg_axbc = 0;
 }
 
 # CLRB saddr
-:CLRB saddr is op=0xF & dreg_byte=0x4; saddr {
+:CLRB saddr is opcode=0xF4; saddr {
     saddr = 0;
 }
 
 # CLRB !addr16
-:CLRB "!"addr16 is op=0xF & dreg_byte=0x5; addr16 {
+:CLRB "!"addr16 is opcode=0xF5; addr16 {
     addr16 = 0;
 }
