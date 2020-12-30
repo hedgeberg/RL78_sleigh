@@ -218,7 +218,7 @@ saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
     export *:1 loc;
 }
 
-addr16: loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
+addr16: "!"loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
     export *:1 loc;
 }
 
@@ -235,6 +235,11 @@ AddrDE: [DE] is DE {
 
 AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
     local loc:3 = zext(DE) + uaddr8;
+    export *:1 loc;
+}
+
+AddrHLOffset: [HL+uaddr8] is HL & uaddr8 {
+    local loc:3 = zext(HL) + uaddr8;
     export *:1 loc;
 }
 
@@ -280,7 +285,7 @@ AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
 }
 
 # MOV !addr16, #byte
-:MOV "!"addr16, "#"data is opcode=0xCF; addr16; data {
+:MOV addr16, "#"data is opcode=0xCF; addr16; data {
     addr16 = data;
 }
 
@@ -305,12 +310,12 @@ AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
 }
 
 # MOV A, !addr16
-:MOV A, "!"addr16 is opcode=0x8F & A; addr16 {
+:MOV A, addr16 is opcode=0x8F & A; addr16 {
     A = addr16;
 }
 
 # MOV !addr16, A
-:MOV "!"addr16, A is opcode=0x9F & A; addr16 {
+:MOV addr16, A is opcode=0x9F & A; addr16 {
     addr16 = A;
 }
 
@@ -393,15 +398,9 @@ AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
     AddrDEOffset = A;
 }
 
-# INC r
-:INC dreg_byte is op_h=0x8 & dreg_byte {
-    inst_inc(dreg_byte);
-}
-
-# DEC r
-:DEC dreg_byte is op_h=0x9 & dreg_byte {
-    inst_dec(dreg_byte);
-}
+#
+# Table 4/30
+#
 
 # ONEB r
 :ONEB dreg_axbc is op_h=0xE & dreg_axbc {
@@ -414,7 +413,7 @@ AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
 }
 
 # ONEB !addr1s6
-:ONEB "!"addr16 is opcode=0xE5; addr16 {
+:ONEB addr16 is opcode=0xE5; addr16 {
     addr16 = 1;
 }
 
@@ -429,9 +428,13 @@ AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
 }
 
 # CLRB !addr16
-:CLRB "!"addr16 is opcode=0xF5; addr16 {
+:CLRB addr16 is opcode=0xF5; addr16 {
     addr16 = 0;
 }
+
+#
+# Table 5/30
+#
 
 # ONEW AX
 :ONEW AX is opcode=0xE6 & AX {
@@ -451,4 +454,48 @@ AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
 # CLRW BC
 :CLRW BC is opcode=0xF7 & BC {
     BC = 0;
+}
+
+#
+# Table 12/30
+#
+
+# INC r
+:INC dreg_byte is op_h=0x8 & dreg_byte {
+    inst_inc(dreg_byte);
+}
+
+# INC saddr
+:INC saddr is opcode=0xA4; saddr {
+    inst_inc(saddr);
+}
+
+# INC !addr16
+:INC addr16 is opcode=0xA0; addr16 {
+    inst_inc(addr16);
+}
+
+# INC [HL+byte]
+:INC AddrHLOffset is opcode=0x61; opcode=0x59; AddrHLOffset {
+    inst_inc(AddrHLOffset);
+}
+
+# DEC r
+:DEC dreg_byte is op_h=0x9 & dreg_byte {
+    inst_dec(dreg_byte);
+}
+
+# DEC saddr
+:DEC saddr is opcode=0xB4; saddr {
+    inst_dec(saddr);
+}
+
+# DEC !addr16
+:DEC addr16 is opcode=0xB0; addr16 {
+    inst_dec(addr16);
+}
+
+# DEC [HL+byte]
+:DEC AddrHLOffset is opcode=0x61; opcode=0x69; AddrHLOffset {
+    inst_dec(AddrHLOffset);
 }
