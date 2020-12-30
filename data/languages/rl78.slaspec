@@ -108,11 +108,17 @@ define pcodeop invalid;
 define token base (8)
     opcode = (0, 7)
     op_h = (4, 7)
+    op_l = (0, 3)
     dreg_byte = (0, 2)
     dreg_axbc = (0, 1)
     sreg_byte = (0, 2);
 attach variables [ dreg_byte sreg_byte ] [X A C B E D L H];
 attach variables [ dreg_axbc ] [X A C B];
+
+define token base2 (8)
+    op2_h = (3, 7)
+    sreg2_byte = (0, 2);
+attach variables [ sreg2_byte ] [X A C B E D L H];
 
 define token data8 (8)
     data        = (0, 7)
@@ -193,6 +199,11 @@ macro inst_dec(dst) {
     AC = (dst == 0x7);
 }
 
+macro inst_xor(dst, src) {
+    dst = dst ^ src;
+    Z = (dst == 0);
+}
+
 macro update_psw(data) {
     # Update PSW as expected
     PSW         = data;
@@ -213,6 +224,13 @@ macro update_psw(data) {
 # Root table constructors
 #
 #########################################################################
+
+# Instruction data tokens
+
+u8: "#"data is data {
+    local tmp:1 = data;
+    export tmp;
+}
 
 saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
     export *:1 loc;
@@ -455,6 +473,41 @@ AddrHLOffset: [HL+uaddr8] is HL & uaddr8 {
 :CLRW BC is opcode=0xF7 & BC {
     BC = 0;
 }
+
+#
+# Table 10/30
+#
+
+# XOR A, #byte
+:XOR A, u8 is opcode=0x7C & A; u8 {
+    inst_xor(A, u8);
+}
+
+# XOR saddr, #byte
+:XOR saddr, u8 is opcode=0x7A; saddr; u8 {
+    inst_xor(saddr, u8);
+}
+
+# NOTE: The following XOR instructions differ by a single bit
+# The high 5 bits of the second byte of the opcode gets shifted
+# by 3 bits when extracted from the byte. 0x78 -> 0xf
+
+# XOR A, r
+:XOR A, sreg2_byte is opcode=0x61 & A; op2_h=0xf & sreg2_byte {
+    inst_xor(A, sreg2_byte);
+}
+
+# XOR r, A
+:XOR sreg2_byte, A is opcode=0x61 & A; op2_h=0xe & sreg2_byte {
+    inst_xor(sreg2_byte, A);
+}
+
+# XOR A, saddr
+:XOR A, saddr is opcode=0x7B & A; saddr {
+    inst_xor(A, saddr);
+}
+
+# XOR
 
 #
 # Table 12/30
