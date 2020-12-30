@@ -207,6 +207,10 @@ addr16: loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
     export *:1 loc;
 }
 
+sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
+    export *:1 loc;
+}
+
 #########################################################################
 #
 # Root table instructions
@@ -260,13 +264,13 @@ addr16: loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
 }
 
 # MOV A, sfr
-:MOV A, sfr_byte is opcode=0x8E & A; sfr_byte {
-    A = sfr_byte;
+:MOV A, sfrp is opcode=0x8E & A; sfrp {
+    A = sfrp;
 }
 
 # MOV sfr, A
-:MOV sfr_byte, A is opcode=0x9E & A; sfr_byte {
-    sfr_byte = A;
+:MOV sfrp, A is opcode=0x9E & A; sfrp {
+    sfrp = A;
 }
 
 # MOV A, !addr16
