@@ -259,6 +259,16 @@ addr16: loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
     saddr = A;
 }
 
+# MOV A, sfr
+:MOV A, sfr_byte is opcode=0x8E & A; sfr_byte {
+    A = sfr_byte;
+}
+
+# MOV sfr, A
+:MOV sfr_byte, A is opcode=0x9E & A; sfr_byte {
+    sfr_byte = A;
+}
+
 # INC r
 :INC dreg_byte is op_h=0x8 & dreg_byte {
     inst_inc(dreg_byte);
