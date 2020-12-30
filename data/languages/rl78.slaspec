@@ -256,8 +256,23 @@ AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
     export *:1 loc;
 }
 
+AddrHL: [HL] is HL {
+    local loc:3 = zext(HL);
+    export *:1 loc;
+}
+
 AddrHLOffset: [HL+uaddr8] is HL & uaddr8 {
     local loc:3 = zext(HL) + uaddr8;
+    export *:1 loc;
+}
+
+AddrHLOffsetB: [HL+B] is HL & B {
+    local loc:3 = zext(HL) + zext(B);
+    export *:1 loc;
+}
+
+AddrHLOffsetC: [HL+C] is HL & C {
+    local loc:3 = zext(HL) + zext(C);
     export *:1 loc;
 }
 
@@ -507,7 +522,30 @@ AddrHLOffset: [HL+uaddr8] is HL & uaddr8 {
     inst_xor(A, saddr);
 }
 
-# XOR
+# XOR A, !addr16
+:XOR A, addr16 is opcode=0x7f & A; addr16 {
+    inst_xor(A, addr16);
+}
+
+# XOR A, [HL]
+:XOR A, AddrHL is opcode=0x7D & A & AddrHL {
+    inst_xor(A, AddrHL);
+}
+
+# XOR A, [HL+byte]
+:XOR A, AddrHLOffset is opcode=0x7E & A; AddrHLOffset {
+    inst_xor(A, AddrHLOffset);
+}
+
+# XOR A, [HL+B]
+:XOR A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xF0 & AddrHLOffsetB {
+    inst_xor(A, AddrHLOffsetB);
+}
+
+# XOR A, [HL+C]
+:XOR A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xF2 & AddrHLOffsetC {
+    inst_xor(A, AddrHLOffsetC);
+}
 
 #
 # Table 12/30
