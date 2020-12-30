@@ -37,17 +37,6 @@ define register offset=0x60 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 # Per AVR, they put status flags in their own registers for simplicity
 define register offset=0x70 size=1 [IE Z RBS1 AC RBS0 ISP1 ISP0 CY];
 
-# Convenience macros for extracting/storing to PSW
-@define IE_flag     "PSW[7, 1]"
-@define Z_flag      "PSW[6, 1]"
-@define RBS1_flag   "PSW[5, 1]"
-@define AC_flag     "PSW[4, 1]"
-@define RBS0_flag   "PSW[3, 1]"
-@define ISP1_flag   "PSW[2, 1]"
-@define ISP0_flag   "PSW[1, 1]"
-@define CY_flag     "PSW[0, 1]"
-
-
 # Implementation-specific special function registers, starting from 0xFFF00
 define ram offset=0xFFF00 size=1 [
     SFR00 SFR01 SFR02 SFR03 SFR04 SFR05 SFR06 SFR07
@@ -332,6 +321,31 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
 # MOV ES, saddr
 :MOV ES, saddr is opcode=0x61 & ES; opcode=0xB8; saddr {
     ES = saddr;
+}
+
+# MOV A, ES
+:MOV A, ES is opcode=0x8E & A & ES; opcode=0xFD {
+    A = ES;
+}
+
+# MOV ES = A
+:MOV ES, A is opcode=0x9E & A & ES; opcode=0xFD {
+    ES = A;
+}
+
+# MOV CS, #byte
+:MOV CS, "#"data is opcode=0xCE & CS; opcode=0xFC; data {
+    CS = data;
+}
+
+# MOV A, CS
+:MOV A, CS is opcode=0x8E & A & CS; opcode=0xFC {
+    A = CS;
+}
+
+# MOV CS, A
+:MOV CS, A is opcode=0x9E & A & CS; opcode=0xFC {
+    CS = A;
 }
 
 # INC r
