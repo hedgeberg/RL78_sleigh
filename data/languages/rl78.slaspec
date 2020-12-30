@@ -14,14 +14,14 @@ define space stackarea  type=ram_space      size=2;
 define space register   type=register_space size=1;
 
 # General Purpose registers
-define register offset= 0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3];  # 8-bit-mode bank3
-define register offset= 0x00 size=2 [AX3   BC3   DE3   HL3];    #16-bit-mode bank3
-define register offset= 0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2];  # 8-bit-mode bank2
-define register offset= 0x08 size=2 [AX2   BC2   DE2   HL2];    #16-bit-mode bank2
-define register offset= 0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1];  # 8-bit-mode bank1
-define register offset= 0x10 size=2 [AX1   BC1   DE1   HL1];    #16-bit-mode bank1
-define register offset= 0x18 size=1 [X  A  C  B  E  D  L  H];   # 8-bit-mode bank0
-define register offset= 0x18 size=2 [AX    BC    DE    HL];     #16-bit-mode bank0
+define register offset=0x00 size=1 [X3 A3 C3 B3 E3 D3 L3 H3];  # 8-bit-mode bank3
+define register offset=0x00 size=2 [AX3   BC3   DE3   HL3  ];  #16-bit-mode bank3
+define register offset=0x08 size=1 [X2 A2 C2 B2 E2 D2 L2 H2];  # 8-bit-mode bank2
+define register offset=0x08 size=2 [AX2   BC2   DE2   HL2  ];  #16-bit-mode bank2
+define register offset=0x10 size=1 [X1 A1 C1 B1 E1 D1 L1 H1];  # 8-bit-mode bank1
+define register offset=0x10 size=2 [AX1   BC1   DE1   HL1  ];  #16-bit-mode bank1
+define register offset=0x18 size=1 [X  A  C  B  E  D  L  H ];  # 8-bit-mode bank0
+define register offset=0x18 size=2 [AX    BC    DE    HL   ];  #16-bit-mode bank0
 
 # Special purpose registers
 define register offset=0x40 size=3 [PC];
@@ -49,11 +49,20 @@ define pcodeop invalid;
 #########################################################################
 
 define token base (8)
-    opcode = (0, 7);
+    byte1 = (0, 7)
+    op = (4, 7)
+    dreg_byte = (0, 2);
+attach variables [ dreg_byte ] [X A C B E D L H];
 
 define token base2 (8)
-    opcode2 = (0, 7);
+    byte2 = (0, 7)
+    data2 = (0, 7);
 
+#########################################################################
+#
+# Root table tokens
+#
+#########################################################################
 
 #########################################################################
 #
@@ -61,6 +70,12 @@ define token base2 (8)
 #
 #########################################################################
 
-:NOP is opcode=0x00 {}
+:NOP is byte1=0x00 {}
 
-:HALT is opcode=0x61; opcode2=0xED { halt(); }
+:HALT is byte1=0x61; byte2=0xED { halt(); }
+
+:STOP is byte1=0x61; byte2=0xFD { stop(); }
+
+:MOV ( dreg_byte ), "#"data2 is op=0x5 & dreg_byte; data2 {
+    dreg_byte = data2;
+}
