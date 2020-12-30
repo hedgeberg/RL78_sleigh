@@ -51,8 +51,9 @@ define pcodeop invalid;
 define token base (8)
     byte1 = (0, 7)
     op = (4, 7)
-    dreg_byte = (0, 2);
-attach variables [ dreg_byte ] [X A C B E D L H];
+    dreg_byte = (0, 2)
+    sreg_byte = (0, 2);
+attach variables [ dreg_byte sreg_byte ] [X A C B E D L H];
 
 define token base2 (8)
     byte2 = (0, 7)
@@ -73,4 +74,19 @@ define token base2 (8)
 # MOV r, #byte
 :MOV dreg_byte, "#"data2 is op=0x5 & dreg_byte; data2 {
     dreg_byte = data2;
+}
+
+# MOV A, r
+:MOV A, sreg_byte is op=0x6 & A & sreg_byte {
+    A = sreg_byte;
+}
+
+# INC r
+:INC dreg_byte is op=0x8 & dreg_byte {
+    dreg_byte = dreg_byte + 1;
+}
+
+# DEC r
+:DEC dreg_byte is op=0x9 & dreg_byte {
+    dreg_byte = dreg_byte - 1;
 }
