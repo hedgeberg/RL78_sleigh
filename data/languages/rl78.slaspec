@@ -61,6 +61,28 @@ define token base2 (8)
 
 #########################################################################
 #
+# Instruction macros
+#
+#########################################################################
+
+macro inst_inc(dst) {
+    dst = dst + 1;
+    Z = (dst == 0);
+    # Generate the carry if the increment generates a carry for bit 4 out of bit 3
+    # Clear in all other cases
+    AC = (dst == 0x8);
+}
+
+macro inst_dec(dst) {
+    dst = dst - 1;
+    Z = (dst == 0);
+    # Generate the carry if the decrement generates a carry for bit 3 out of bit 4
+    # Clear in all other cases
+    AC = (dst == 0x7);
+}
+
+#########################################################################
+#
 # Root table instructions
 #
 #########################################################################
@@ -83,10 +105,10 @@ define token base2 (8)
 
 # INC r
 :INC dreg_byte is op=0x8 & dreg_byte {
-    dreg_byte = dreg_byte + 1;
+    inst_inc(dreg_byte);
 }
 
 # DEC r
 :DEC dreg_byte is op=0x9 & dreg_byte {
-    dreg_byte = dreg_byte - 1;
+    inst_dec(dreg_byte);
 }
