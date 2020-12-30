@@ -109,11 +109,15 @@ define token base (8)
     opcode = (0, 7)
     op_h = (4, 7)
     op_l = (0, 3)
+    rp_source = (0, 0)
+    movw_op = (3, 3)
+    dreg_word = (1, 2)
     dreg_byte = (0, 2)
     dreg_axbc = (0, 1)
     sreg_byte = (0, 2);
 attach variables [ dreg_byte sreg_byte ] [X A C B E D L H];
 attach variables [ dreg_axbc ] [X A C B];
+attach variables [ dreg_word ] [AX BC DE HL];
 
 define token base2 (8)
     op2_h = (3, 7)
@@ -175,6 +179,7 @@ attach variables [ sfr_byte ] [
 ];
 
 define token data16 (16)
+    dataw = (0, 15)
     uaddr16 = (0, 15);
 
 #########################################################################
@@ -207,7 +212,7 @@ macro inst_xor(dst, src) {
 macro inst_cmp(dst, src) {
     Z = (dst - src) == 0;
     AC = (dst & 0x08) >= (src & 0x08);
-    CY = (dst & 0x80) >= (src & 0x80);
+    CY = sborrow(dst, src);
 }
 
 macro inst_cmp0(dst) {
@@ -220,6 +225,20 @@ macro inst_cmps(dst, src) {
     Z = (dst - src) == 0;
     CY = (Z != 0) | (A == 0) | (dst == 0);
     AC = (dst & 0x08) >= (src & 0x08);
+}
+
+macro inst_addw(dst, src) {
+    CY = carry(dst, src);
+    dst = dst + src;
+    Z = (dst == 0);
+    AC = 0;
+}
+
+macro inst_subw(dst, src) {
+    CY = sborrow(dst, src);
+    dst = dst - src;
+    Z = (dst == 0);
+    AC = 0;
 }
 
 macro update_psw(data) {
@@ -250,12 +269,27 @@ u8: "#"data is data {
     export tmp;
 }
 
+u16: "#"dataw is dataw {
+    local tmp:2 = dataw;
+    export tmp;
+}
+
 saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
     export *:1 loc;
 }
 
+saddrp: uaddr8 is uaddr8 {
+    local loc:3 = (0xFFFE00 + uaddr8) & 0xFFFFFE;
+    export *:2 loc;
+}
+
 addr16: "!"loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
     export *:1 loc;
+}
+
+addr16w: "!"uaddr16 is uaddr16 {
+    local tmp:3 = (0xF0000 + uaddr16) & 0xFFFFFE;
+    export *:2 tmp;
 }
 
 sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
@@ -282,6 +316,11 @@ AddrHL: [HL] is HL {
 AddrHLOffset: [HL+uaddr8] is HL & uaddr8 {
     local loc:3 = zext(HL) + uaddr8;
     export *:1 loc;
+}
+
+AddrHLOffsetW: [HL+uaddr8] is HL & uaddr8 {
+    local loc:3 = zext(HL) + uaddr8;
+    export *:2 loc;
 }
 
 AddrHLOffsetB: [HL+B] is HL & B {
@@ -646,6 +685,56 @@ AddrHLOffsetC: [HL+C] is HL & C {
 # CMPS X, [HL+byte]
 :CMPS X, AddrHLOffset is opcode=0x61 & X; opcode=0xDE; AddrHLOffset {
     inst_cmps(X, AddrHLOffset);
+}
+
+# ADDW AX, #word
+:ADDW AX, u16 is opcode=0x04 & AX; u16 {
+    inst_addw(AX, u16);
+}
+
+# ADDW AX, rp
+:ADDW AX, dreg_word is op_h=0x0 & AX & rp_source=1 & movw_op=0 & dreg_word {
+    inst_addw(AX, dreg_word);
+}
+
+# ADDW AX, saddrp
+:ADDW AX, saddrp is opcode=0x06 & AX; saddrp {
+    inst_addw(AX, saddrp);
+}
+
+# ADDW AX, !addr16
+:ADDW AX, addr16w is opcode=0x02 & AX; addr16w {
+    inst_addw(AX, addr16w);
+}
+
+# ADDW AX, [HL+byte]
+:ADDW AX, AddrHLOffsetW is opcode=0x61 & AX; opcode=0x09; AddrHLOffsetW {
+    inst_addw(AX, AddrHLOffsetW);
+}
+
+# SUBW AX, #word
+:SUBW AX, u16 is opcode=0x24 & AX; u16 {
+    inst_subw(AX, u16);
+}
+
+# SUBW AX, rp
+:SUBW AX, dreg_word is op_h=0x2 & AX & rp_source=1 & movw_op=0 & dreg_word {
+    inst_subw(AX, dreg_word);
+}
+
+# SUBW AX, saddrp
+:SUBW AX, saddrp is opcode=0x26 & AX; saddrp {
+    inst_subw(AX, saddrp);
+}
+
+# SUBW AX, !addr16
+:SUBW AX, addr16w is opcode=0x22 & AX; addr16w {
+    inst_subw(AX, addr16w);
+}
+
+# SUBW AX, [HL+byte]
+:SUBW AX, AddrHLOffsetW is opcode=0x61 & AX; opcode=0x29; AddrHLOffsetW {
+    inst_subw(AX, AddrHLOffsetW);
 }
 
 #
