@@ -26,7 +26,7 @@ define register offset= 0x18 size=2 [AX    BC    DE    HL];     #16-bit-mode ban
 # Special purpose registers
 define register offset=0x40 size=3 [PC];
 define register offset=0x50 size=2 [SP      _     _     _      ];
-define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
+define register offset=0x60 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 
 # Per AVR, they put status flags in their own registers for simplicity
 define register offset=0x70 size=1 [IE Z RBS1 AC RBS0 ISP1 ISP0 CY];
@@ -51,6 +51,9 @@ define pcodeop invalid;
 define token base (8)
     opcode = (0, 7);
 
+define token base2 (8)
+    opcode2 = (0, 7);
+
 
 #########################################################################
 #
@@ -59,3 +62,5 @@ define token base (8)
 #########################################################################
 
 :NOP is opcode=0x00 {}
+
+:HALT is opcode=0x61; opcode2=0xED { halt(); }
