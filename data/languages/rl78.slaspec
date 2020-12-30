@@ -9,7 +9,7 @@
 define endian=little;
 define alignment=1;
 
-define space ram        type=ram_space      size=1 default;
+define space ram        type=ram_space      size=3 wordsize=1 default;
 define space stackarea  type=ram_space      size=2;
 define space register   type=register_space size=1;
 
@@ -60,12 +60,6 @@ define token base2 (8)
 
 #########################################################################
 #
-# Root table tokens
-#
-#########################################################################
-
-#########################################################################
-#
 # Root table instructions
 #
 #########################################################################
@@ -76,6 +70,7 @@ define token base2 (8)
 
 :STOP is byte1=0x61; byte2=0xFD { stop(); }
 
-:MOV ( dreg_byte ), "#"data2 is op=0x5 & dreg_byte; data2 {
+# MOV r, #byte
+:MOV dreg_byte, "#"data2 is op=0x5 & dreg_byte; data2 {
     dreg_byte = data2;
 }

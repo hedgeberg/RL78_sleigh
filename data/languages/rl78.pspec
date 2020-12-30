@@ -4,4 +4,7 @@
 
 <processor_spec>
   <programcounter register="PC"/>
+  <volatile outputop="reg_write" inputop="reg_read">
+    <range space="ram" first="0xe0000" last="0xe00ff"/> <!-- xcbase xdbase -->
+  </volatile>
 </processor_spec>
