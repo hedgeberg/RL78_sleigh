@@ -6,6 +6,12 @@
 # MikeM64, 2020
 #########################################################################
 
+#
+# Current TODO list:
+#   - Prefix instructions
+#   - Rest of the manual...
+#
+
 define endian=little;
 define alignment=1;
 
@@ -62,6 +68,9 @@ define token base2 (8)
 define token data8 (8)
     uaddr8 = (0, 7);
 
+define token data16 (16)
+    uaddr16 = (0, 15);
+
 #########################################################################
 #
 # Instruction macros
@@ -91,7 +100,11 @@ macro inst_dec(dst) {
 #########################################################################
 
 saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
-    export *[ram]:1 loc;
+    export *:1 loc;
+}
+
+addr16: loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
+    export *:1 loc;
 }
 
 #########################################################################
@@ -141,6 +154,11 @@ saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
     saddr = 1; 
 }
 
+# ONEB !addr16
+:ONEB "!"addr16 is op=0xE & dreg_byte=0x5; addr16 {
+    addr16 = 1;
+}
+
 # CLRB r
 :CLRB dreg_byte is op=0xF & dreg_byte {
     dreg_byte = 0;
@@ -149,4 +167,9 @@ saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
 # CLRB saddr
 :CLRB saddr is op=0xF & dreg_byte=0x4; saddr {
     saddr = 0;
+}
+
+# CLRB !addr16
+:CLRB "!"addr16 is op=0xF & dreg_byte=0x5; addr16 {
+    addr16 = 0;
 }
