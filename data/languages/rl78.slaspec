@@ -244,6 +244,11 @@ addr16: loc is uaddr16 [ loc = 0xF0000 + uaddr16; ] {
     sfr_byte = data;
 }
 
+# MOV !addr16, #byte
+:MOV "!"addr16, "#"data is opcode=0xCF; addr16; data {
+    addr16 = data;
+}
+
 # INC r
 :INC dreg_byte is op_h=0x8 & dreg_byte {
     inst_inc(dreg_byte);
