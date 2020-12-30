@@ -204,6 +204,12 @@ macro inst_xor(dst, src) {
     Z = (dst == 0);
 }
 
+macro inst_cmp(dst, src) {
+    Z = (dst - src) == 0;
+    AC = (dst & 0x08) > (src & 0x08);
+    CY = (dst & 0x80) > (src & 0x80);
+}
+
 macro update_psw(data) {
     # Update PSW as expected
     PSW         = data;
@@ -504,8 +510,8 @@ AddrHLOffsetC: [HL+C] is HL & C {
 }
 
 # NOTE: The following XOR instructions differ by a single bit
-# The high 5 bits of the second byte of the opcode gets shifted
-# by 3 bits when extracted from the byte. 0x78 -> 0xf
+# The high 5 bits of the second byte of the opcode get shifted
+# by 3 bits when extracted from the byte. 0x78 >> 3 -> 0xf
 
 # XOR A, r
 :XOR A, sreg2_byte is opcode=0x61 & A; op2_h=0xf & sreg2_byte {
@@ -545,6 +551,30 @@ AddrHLOffsetC: [HL+C] is HL & C {
 # XOR A, [HL+C]
 :XOR A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xF2 & AddrHLOffsetC {
     inst_xor(A, AddrHLOffsetC);
+}
+
+# CMP A, #byte
+:CMP A, u8 is opcode=0x4C & A; u8 {
+    inst_cmp(A, u8);
+}
+
+# CMP saddr, #byte
+:CMP saddr, u8 is opcode=0x4A; saddr; u8 {
+    inst_cmp(saddr, u8);
+}
+
+# NOTE: Similar to XOR above, CMP can be simplified by looking
+# at the 5 upper bits of the second byte of the instruction.
+# 0x48 -> 0x9
+
+# CMP A, r
+:CMP A, sreg2_byte is opcode=0x61 & A; op2_h=0x9 & sreg2_byte {
+    inst_cmp(A, sreg2_byte);
+}
+
+# CMP r, A
+:CMP sreg2_byte, A is opcode=0x61 & A; op2_h=0x8 & sreg2_byte {
+    inst_cmp(sreg2_byte, A);
 }
 
 #
