@@ -99,6 +99,10 @@ define pcodeop halt;
 define pcodeop stop;
 define pcodeop invalid;
 
+define pcodeop divwu;
+define pcodeop machu;
+define pcodeop mach;
+
 #########################################################################
 #
 # Instruction token and field definitions
@@ -239,6 +243,12 @@ macro inst_subw(dst, src) {
     dst = dst - src;
     Z = (dst == 0);
     AC = 0;
+}
+
+macro inst_cmpw(dst, src) {
+    Z = (dst - src) == 0;
+    AC = 0;
+    CY = sborrow(dst, src);
 }
 
 macro update_psw(data) {
@@ -740,6 +750,89 @@ AddrHLOffsetC: [HL+C] is HL & C {
 #
 # Table 12/30
 #
+
+# CMPW AX, #word
+:CMPW AX, u16 is opcode=0x44 & AX; u16 {
+    inst_cmpw(AX, u16);
+}
+
+# CMPW AX, rp
+:CMPW AX, dreg_word is op_h=0x4 & AX & rp_source=1 & movw_op=0 & dreg_word {
+    inst_cmpw(AX, dreg_word);
+}
+
+# CMPW AX, saddrp
+:CMPW AX, saddrp is opcode=0x46 & AX; saddrp {
+    inst_cmpw(AX, saddrp);
+}
+
+# CMPW AX, !addr16
+:CMPW AX, addr16w is opcode=0x42 & AX; addr16w {
+    inst_cmpw(AX, addr16w);
+}
+
+# CMPW AX, [HL+byte]
+:CMPW AX, AddrHLOffsetW is opcode=0x61 & AX; opcode=0x49; AddrHLOffsetW {
+    inst_cmpw(AX, AddrHLOffsetW);
+}
+
+# MULU X
+:MULU X (AX"="A"*X") is opcode=0xD6 & AX & X & A {
+    local aw:2 = zext(A:1);
+    local xw:2 = zext(X:1);
+    AX = aw * xw;
+}
+
+# MULHU
+:MULHU ("AXBC="AX"*"BC) is opcode=0xCE; opcode=0xFB; opcode=0x01 & AX & BC {
+    local axdw:4 = zext(AX:2);
+    local bcdw:4 = zext(BC:2);
+    local res:4 = axdw * bcdw;
+
+    bcdw = (res & 0xFFFF0000) >> 16;
+    axdw = (res & 0x0000FFFF);
+
+    BC = bcdw:2;
+    AX = axdw:2;
+}
+
+# MULH
+:MULH ("AXBC="AX"*"BC) is opcode=0xCE; opcode=0xFB; opcode=0x02 & AX & BC {
+    local axdw:4 = sext(AX:2);
+    local bcdw:4 = sext(BC:2);
+    local res:4 = axdw * bcdw;
+
+    bcdw = (res & 0xFFFF0000) >> 16;
+    axdw = (res & 0x0000FFFF);
+
+    BC = bcdw:2;
+    AX = axdw:2; 
+}
+
+# DIVHU
+:DIVHU ("AXDE="AX"/"DE) is opcode=0xCE; opcode=0xFB; opcode=0x03 & AX & DE {
+    local axdw:4 = zext(AX:2);
+    local dedw:4 = zext(DE:2);
+
+    # Doesn't handle the case where DE is 0
+    local div:4 = axdw / dedw;
+    local rem:4 = axdw % dedw;
+
+    dedw = div & 0xFFFF;
+    axdw = rem & 0xFFFF;
+
+    DE = dedw:2;
+    AX = axdw:2;
+}
+
+# DIVWU
+:DIVWU is opcode=0xCE; opcode=0xFB; opcode=0x04 { divwu(); }
+
+# MACHU
+:MACHU is opcode=0xCE; opcode=0xFB; opcode=0x05 { machu(); }
+
+# MACH
+:MACH is opcode=0xCE; opcode=0xFB; opcode=0x06 { mach(); }
 
 # INC r
 :INC dreg_byte is op_h=0x8 & dreg_byte {
