@@ -37,6 +37,17 @@ define register offset=0x60 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 # Per AVR, they put status flags in their own registers for simplicity
 define register offset=0x70 size=1 [IE Z RBS1 AC RBS0 ISP1 ISP0 CY];
 
+# Convenience macros for extracting/storing to PSW
+@define IE_flag     "PSW[7, 1]"
+@define Z_flag      "PSW[6, 1]"
+@define RBS1_flag   "PSW[5, 1]"
+@define AC_flag     "PSW[4, 1]"
+@define RBS0_flag   "PSW[3, 1]"
+@define ISP1_flag   "PSW[2, 1]"
+@define ISP0_flag   "PSW[1, 1]"
+@define CY_flag     "PSW[0, 1]"
+
+
 # Implementation-specific special function registers, starting from 0xFFF00
 define ram offset=0xFFF00 size=1 [
     SFR00 SFR01 SFR02 SFR03 SFR04 SFR05 SFR06 SFR07
@@ -193,6 +204,21 @@ macro inst_dec(dst) {
     AC = (dst == 0x7);
 }
 
+macro update_psw(data) {
+    # Update PSW as expected
+    PSW         = data;
+    # Then split it apart into the shadow registers
+    # for use during decompilation
+    IE     = (data & 0x80) >> 7;
+    Z      = (data & 0x40) >> 6;
+    RBS1   = (data & 0x20) >> 5;
+    AC     = (data & 0x10) >> 4;
+    RBS0   = (data & 0x08) >> 3;
+    ISP1   = (data & 0x04) >> 2;
+    ISP0   = (data & 0x02) >> 1;
+    CY     = (data & 0x01);
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -281,6 +307,21 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
 # MOV !addr16, A
 :MOV "!"addr16, A is opcode=0x9F & A; addr16 {
     addr16 = A;
+}
+
+# MOV PSW, #byte
+:MOV PSW, "#"data is opcode=0x9F & PSW; opcode=0xFA; data {
+    update_psw(data);
+}
+
+# MOV A, PSW
+:MOV A, PSW is opcode=0x8E & A & PSW; opcode=0xFA {
+    A = PSW;
+}
+
+# MOV PSW, A
+:MOV PSW, A is opcode=0x9E & A & PSW; opcode=0xFA {
+    update_psw(A);
 }
 
 # INC r
