@@ -324,6 +324,16 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
     update_psw(A);
 }
 
+# MOV ES, #byte
+:MOV ES, "#"data is opcode=0x41 & ES; data {
+    ES = data;
+}
+
+# MOV ES, saddr
+:MOV ES, saddr is opcode=0x61 & ES; opcode=0xB8; saddr {
+    ES = saddr;
+}
+
 # INC r
 :INC dreg_byte is op_h=0x8 & dreg_byte {
     inst_inc(dreg_byte);
