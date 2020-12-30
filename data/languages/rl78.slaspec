@@ -1,7 +1,7 @@
 #########################################################################
 # RL78 Core in SLEIGH
 #
-# Based off of the work from Hedgeberg
+# Based off of the work from Hedgeberg and aerosoul94
 #
 # MikeM64, 2020
 #########################################################################
@@ -226,6 +226,13 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
     export *:1 loc;
 }
 
+# Register Ponter tokens - [r]
+
+AddrDE: [DE] is DE {
+    local loc:3 = zext(DE);
+    export *:1 loc;
+}
+
 #########################################################################
 #
 # Root table instructions
@@ -237,6 +244,10 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
 :HALT is opcode=0x61; opcode=0xED { halt(); }
 
 :STOP is opcode=0x61; opcode=0xFD { stop(); }
+
+#
+# Table 1/30
+#
 
 # MOV r, #byte
 :MOV dreg_byte, "#"data is op_h=0x5 & dreg_byte; data {
@@ -338,6 +349,10 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
     CS = data;
 }
 
+#
+# Table 2/30
+#
+
 # MOV A, CS
 :MOV A, CS is opcode=0x8E & A & CS; opcode=0xFC {
     A = CS;
@@ -346,6 +361,16 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
 # MOV CS, A
 :MOV CS, A is opcode=0x9E & A & CS; opcode=0xFC {
     CS = A;
+}
+
+# MOV A, [DE]
+:MOV A, AddrDE is opcode=0x89 & A & AddrDE {
+    A = AddrDE;
+}
+
+# MOV [DE], A
+:MOV AddrDE, A is opcode=0x99 & A & AddrDE {
+    AddrDE = A;
 }
 
 # INC r
