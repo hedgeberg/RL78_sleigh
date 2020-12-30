@@ -59,6 +59,9 @@ define token base2 (8)
     byte2 = (0, 7)
     data2 = (0, 7);
 
+define token data8 (8)
+    uaddr8 = (0, 7);
+
 #########################################################################
 #
 # Instruction macros
@@ -83,6 +86,16 @@ macro inst_dec(dst) {
 
 #########################################################################
 #
+# Root table constructors
+#
+#########################################################################
+
+saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
+    export *[ram]:1 loc;
+}
+
+#########################################################################
+#
 # Root table instructions
 #
 #########################################################################
@@ -103,6 +116,11 @@ macro inst_dec(dst) {
     A = sreg_byte;
 }
 
+# MOV r, A
+:MOV dreg_byte, A is op=0x7 & A & dreg_byte {
+    dreg_byte = A;
+}
+
 # INC r
 :INC dreg_byte is op=0x8 & dreg_byte {
     inst_inc(dreg_byte);
@@ -111,4 +129,24 @@ macro inst_dec(dst) {
 # DEC r
 :DEC dreg_byte is op=0x9 & dreg_byte {
     inst_dec(dreg_byte);
+}
+
+# ONEB r
+:ONEB dreg_byte is op=0xE & dreg_byte {
+    dreg_byte = 1;
+}
+
+# ONEB saddr
+:ONEB saddr is op=0xE & dreg_byte=0x4; saddr {
+    saddr = 1; 
+}
+
+# CLRB r
+:CLRB dreg_byte is op=0xF & dreg_byte {
+    dreg_byte = 0;
+}
+
+# CLRB saddr
+:CLRB saddr is op=0xF & dreg_byte=0x4; saddr {
+    saddr = 0;
 }
