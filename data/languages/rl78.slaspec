@@ -233,6 +233,11 @@ AddrDE: [DE] is DE {
     export *:1 loc;
 }
 
+AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
+    local loc:3 = zext(DE) + uaddr8;
+    export *:1 loc;
+}
+
 #########################################################################
 #
 # Root table instructions
@@ -371,6 +376,21 @@ AddrDE: [DE] is DE {
 # MOV [DE], A
 :MOV AddrDE, A is opcode=0x99 & A & AddrDE {
     AddrDE = A;
+}
+
+# MOV [DE+byte], #byte
+:MOV AddrDEOffset, "#"data is opcode=0xCA; AddrDEOffset; data {
+    AddrDEOffset = data;
+}
+
+# MOV A, [DE+byte]
+:MOV A, AddrDEOffset is opcode=0x8A & A; AddrDEOffset {
+    A = AddrDEOffset;
+}
+
+# MOV [DE+byte], A
+:MOV AddrDEOffset, A is opcode=0x9A & A; AddrDEOffset {
+    AddrDEOffset = A;
 }
 
 # INC r
