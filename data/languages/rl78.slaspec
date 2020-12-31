@@ -374,18 +374,38 @@ AddrHLOffsetC: [HL+C] is HL & C {
 }
 
 AddrWordOffsetB: uaddr16[B] is uaddr16 & B {
+    local loc:3 = uaddr16 + zext(B);
+    export *:1 loc;
+}
+
+AddrWordOffsetBW: uaddr16[B] is uaddr16 & B {
     local loc:3 = (uaddr16 + zext(B)) & 0xFFFFFE;
     export *:2 loc;
 }
 
 AddrWordOffsetC: uaddr16[C] is uaddr16 & C {
+    local loc:3 = uaddr16 + zext(C);
+    export *:1 loc;
+}
+
+AddrWordOffsetCW: uaddr16[C] is uaddr16 & C {
     local loc:3 = (uaddr16 + zext(C)) & 0xFFFFFE;
     export *:2 loc;
 }
 
 AddrWordOffsetBC: uaddr16[BC] is uaddr16 & BC {
+    local loc:3 = uaddr16 + zext(BC);
+    export *:1 loc;
+}
+
+AddrWordOffsetBCW: uaddr16[BC] is uaddr16 & BC {
     local loc:3 = (uaddr16 + zext(BC)) & 0xFFFFFE;
     export *:2 loc;
+}
+
+AddrSPOffset: [SP+uaddr8] is SP & uaddr8 {
+    local loc:3 = zext(SP) + uaddr8;
+    export *:1 loc;
 }
 
 AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
@@ -548,6 +568,141 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
     AddrDEOffset = A;
 }
 
+# MOV A, [HL]
+:MOV A, AddrHL is opcode=0x8B & A & AddrHL {
+    A = AddrHL;
+}
+
+# MOV [HL], A
+:MOV AddrHL, A is opcode=0x9B & A & AddrHL {
+    AddrHL = A;
+}
+
+# MOV [HL+byte], #byte
+:MOV AddrHLOffset, u8 is opcode=0xCC; AddrHLOffset; u8 {
+    AddrHLOFfset = u8;
+}
+
+# MOV A, [HL+byte]
+:MOV A, AddrHLOffset is opcode=0x8C & A; AddrHLOffset {
+    A = AddrHLOffset;
+}
+
+# MOV [HL+byte], A
+:MOV AddrHLOffset, A is opcode=0x9C & A; AddrHLOffset {
+    AddrHLOffset = A;
+}
+
+# MOV A, [HL+B]
+:MOV A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xC9 & AddrHLOffsetB {
+    A = AddrHLOffsetB;
+}
+
+# MOV [HL+B], A
+:MOV AddrHLOffsetB, A is opcode=0x61 & A; opcode=0xD9 & AddrHLOffsetB {
+    AddrHLOffsetB = A;
+}
+
+# MOV A, [HL+C]
+:MOV A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xE9 & AddrHLOffsetC {
+    A = AddrHLOffsetC;
+}
+
+# MOV [HL+C], A
+:MOV AddrHLOffsetC, A is opcode=0x61 & A; opcode=0xF9 & AddrHLOffsetC {
+    AddrHLOffsetC = A;
+}
+
+# MOV word[B], #byte
+:MOV AddrWordOffsetB, u8 is opcode=0x19; AddrWordOffsetB; u8 {
+    AddrWordOffsetB = u8;
+}
+
+# MOV A, word[B]
+:MOV A, AddrWordOffsetB is opcode=0x09 & A; AddrWordOffsetB {
+    A = AddrWordOffsetB;
+}
+
+# MOV word[B], A
+:MOV AddrWordOffsetB, A is opcode=0x18 & A; AddrWordOffsetB {
+    AddrWordOffsetB = A;
+}
+
+# MOV word[C], #byte
+:MOV AddrWordOffsetC, u8 is opcode=0x38; AddrWordOffsetC; u8 {
+    AddrWordOffsetC = u8;
+}
+
+# MOV A, word[C]
+:MOV A, AddrWordOffsetC is opcode=0x29 & A; AddrWordOffsetC {
+    A = AddrWordOffsetC;
+}
+
+# MOV word[C], A
+:MOV AddrWordOffsetC, A is opcode=0x28 & A; AddrWordOffsetC {
+    AddrWordOffsetC = A;
+}
+
+# MOV word[BC], #byte
+:MOV AddrWordOffsetBC, u8 is opcode=0x39; AddrWordOffsetBC; u8 {
+    AddrWordOffsetBC = u8;
+}
+
+# MOV A, word[BC]
+:MOV A, AddrWordOffsetBC is opcode=0x49 & A; AddrWordOffsetBC {
+    A = AddrWordOffsetBC;
+}
+
+# MOV word[BC], A
+:MOV AddrWordOffsetBC, A is opcode=0x48 & A; AddrWordOffsetBC {
+    AddrWordOffsetBC = A;
+}
+
+# MOV [SP+byte], #byte
+:MOV AddrSPOffset, u8 is opcode=0xC8; AddrSPOffset; u8 {
+    AddrSPOffset = u8;
+}
+
+# MOV A, [SP+byte]
+:MOV A, AddrSPOffset is opcode=0x88 & A; AddrSPOffset {
+    A = AddrSPOffset;
+} 
+
+# MOV [SP+byte], A
+:MOV AddrSPOffset, A is opcode=0x98 & A; AddrSPOffset {
+    AddrSPOffset = A;
+}
+
+# MOV B, saddr
+:MOV B, saddr is opcode=0xE8 & B; saddr {
+    B = saddr;
+}
+
+# MOV B, !addr16
+:MOV B, addr16 is opcode=0xE9 & B; addr16 {
+    B = addr16;
+}
+
+# MOV C, saddr
+:MOV C, saddr is opcode=0xF8 & C; saddr {
+    C = saddr;
+}
+
+# MOV C, !addr16
+:MOV C, addr16 is opcode=0xF9 & C; addr16 {
+    C = addr16;
+}
+
+# MOV X, saddr
+:MOV X, saddr is opcode=0xD8 & X; saddr {
+    X = saddr;
+}
+
+# MOV X, !addr16
+:MOV X, addr16 is opcode=0xD9 & X; addr16 {
+    X = addr16;
+}
+
 #
 # Table 4/30
 #
@@ -683,8 +838,8 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 }
 
 # MOVW AX, word[B]
-:MOVW AX, AddrWordOffsetB is opcode=0x59 & AX; AddrWordOffsetB {
-    AX = AddrWordOffsetB;
+:MOVW AX, AddrWordOffsetBW is opcode=0x59 & AX; AddrWordOffsetBW {
+    AX = AddrWordOffsetBW;
 }
 
 #
@@ -692,23 +847,23 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 #
 
 # MOVW word[B], AX
-:MOVW AddrWordOffsetB, AX is opcode=0x58 & AX; AddrWordOffsetB {
-    AddrWordOffsetB = AX;
+:MOVW AddrWordOffsetBW, AX is opcode=0x58 & AX; AddrWordOffsetBW {
+    AddrWordOffsetBW = AX;
 }
 
 # MOVW AX, word[C]
-:MOVW AX, AddrWordOffsetC is opcode=0x69 & AX; AddrWordOffsetC {
-    AX = AddrWordOffsetC;
+:MOVW AX, AddrWordOffsetCW is opcode=0x69 & AX; AddrWordOffsetCW {
+    AX = AddrWordOffsetCW;
 }
 
 # MOVW word[C], AX
-:MOVW AddrWordOffsetC, AX is opcode=0x68 & AX; AddrWordOffsetC {
-    AddrWordOffsetC = AX;
+:MOVW AddrWordOffsetCW, AX is opcode=0x68 & AX; AddrWordOffsetCW {
+    AddrWordOffsetCW = AX;
 }
 
 # MOVW AX, word[BC]
-:MOVW AX, AddrWordOffsetBC is opcode=0x79 & AX; AddrWordOffsetBC {
-    AX = AddrWordOffsetBC;
+:MOVW AX, AddrWordOffsetBCW is opcode=0x79 & AX; AddrWordOffsetBCW {
+    AX = AddrWordOffsetBCW;
 }
 
 # MOVW AX, [SP+byte]
@@ -755,7 +910,7 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 :XCHW AX, dreg_word is op_h=0x3 & rp_source=1 & dreg_word & AX {
     local tmp = AX;
     AX = dreg_word;
-    dreg_word = AX;
+    dreg_word = tmp;
 }
 
 # ONEW AX
