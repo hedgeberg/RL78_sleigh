@@ -440,14 +440,14 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
     dreg_byte = data;
 }
 
-# MOV A, r
-:MOV A, sreg_byte is op_h=0x6 & A & sreg_byte {
-    A = sreg_byte;
-}
-
 # MOV r, A
 :MOV dreg_byte, A is op_h=0x7 & A & dreg_byte {
     dreg_byte = A;
+}
+
+# MOV A, r
+:MOV A, sreg_byte is op_h=0x6 & A & sreg_byte {
+    A = sreg_byte;
 }
 
 # MOV saddr, #byte
@@ -719,7 +719,7 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 }
 
 # XCH A, r
-:XCH A, sreg2_byte is opcode=0x61 & A; op2_h=0x10 & sreg2_byte {
+:XCH A, sreg2_byte is opcode=0x61; op2_h=0x11 & sreg2_byte & A {
     inst_xch(A, sreg2_byte);
 }
 
