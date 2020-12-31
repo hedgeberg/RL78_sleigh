@@ -113,6 +113,7 @@ define token base (8)
     opcode = (0, 7)
     op_h = (4, 7)
     op_l = (0, 3)
+    # Whether an rp (16-bit) register is the data source
     rp_source = (0, 0)
     movw_op = (3, 3)
     dreg_word = (1, 2)
@@ -206,6 +207,12 @@ macro inst_dec(dst) {
     # Generate the carry if the decrement generates a carry for bit 3 out of bit 4
     # Clear in all other cases
     AC = (dst == 0x7);
+}
+
+macro inst_movs(dst) {
+    dst = X;
+    Z = (X == 0);
+    CY = (X == 0) | (A == 0);
 }
 
 macro inst_xor(dst, src) {
@@ -306,6 +313,14 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
     export *:1 loc;
 }
 
+# TODO: Doesn't mask off on even addresses without complicating the
+# decompilation. Tried to calculate using the below:
+# local tmp:3 = (0xFFF00 + zext(sfr_byte)) & 0xFFFFFE;
+sfrpw: sfr_byte is sfr_byte {
+    local tmp:3 = zext(sfr_byte);
+    export *:2 tmp;
+}
+
 # Register Ponter tokens - [r]
 
 AddrDE: [DE] is DE {
@@ -313,14 +328,29 @@ AddrDE: [DE] is DE {
     export *:1 loc;
 }
 
+AddrDEW: [DE] is DE {
+    local loc:3 = zext(DE);
+    export *:2 loc;
+}
+
 AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
     local loc:3 = zext(DE) + uaddr8;
     export *:1 loc;
 }
 
+AddrDEOffsetW: [DE+uaddr8] is DE & uaddr8 {
+    local loc:3 = zext(DE) + uaddr8;
+    export *:2 loc;
+}
+
 AddrHL: [HL] is HL {
     local loc:3 = zext(HL);
     export *:1 loc;
+}
+
+AddrHLW: [HL] is HL {
+    local loc:3 = zext(HL);
+    export *:2 loc;
 }
 
 AddrHLOffset: [HL+uaddr8] is HL & uaddr8 {
@@ -341,6 +371,26 @@ AddrHLOffsetB: [HL+B] is HL & B {
 AddrHLOffsetC: [HL+C] is HL & C {
     local loc:3 = zext(HL) + zext(C);
     export *:1 loc;
+}
+
+AddrWordOffsetB: uaddr16[B] is uaddr16 & B {
+    local loc:3 = (uaddr16 + zext(B)) & 0xFFFFFE;
+    export *:2 loc;
+}
+
+AddrWordOffsetC: uaddr16[C] is uaddr16 & C {
+    local loc:3 = (uaddr16 + zext(C)) & 0xFFFFFE;
+    export *:2 loc;
+}
+
+AddrWordOffsetBC: uaddr16[BC] is uaddr16 & BC {
+    local loc:3 = (uaddr16 + zext(BC)) & 0xFFFFFE;
+    export *:2 loc;
+}
+
+AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
+    local loc:3 = zext(SP) + uaddr8;
+    export *:2 loc;
 }
 
 #########################################################################
@@ -532,9 +582,181 @@ AddrHLOffsetC: [HL+C] is HL & C {
     addr16 = 0;
 }
 
+# MOVS [HL+byte], X
+:MOVS X, AddrHLOffset ("Check "A" if zero")is opcode=0x61 & X & A; opcode=0xCE; AddrHLOffset {
+    inst_movs(AddrHLOffset);
+}
+
+# MOVW rp, #word
+:MOVW dreg_word, u16 is op_h=0x3 & dreg_word; u16 {
+    dreg_word = u16;
+}
+
+# MOVW saddrp, #word
+:MOVW saddrp, u16 is opcode=0xC9; saddrp; u16 {
+    saddrp = u16;
+}
+
+# MOVW sfr, #word
+:MOVW sfrpw, u16 is opcode=0xCB; sfrpw; u16 {
+    sfrpw = u16;
+}
+
+# MOVW AX, saddrp
+:MOVW AX, saddrp is opcode=0xAD & AX; saddrp {
+    AX = saddrp;
+}
+
+# MOVW saddrp, AX
+:MOVW saddrp, AX is opcode=0xBD & AX; saddrp {
+    saddrp = AX;
+}
+
+# MOVW AX, sfrp
+:MOVW AX, sfrpw is opcode=0xAE & AX; sfrpw {
+    AX = sfrpw;
+}
+
+# MOVW sfrp, AX
+:MOVW sfrpw, AX is opcode=0xBE & AX; sfrpw {
+    sfrpw = AX;
+}
+
+# MOVW AX, rp
+:MOVW AX, dreg_word is op_h=0x1 & AX & dreg_word & rp_source=1 {
+    AX = dreg_word;
+}
+
+# MOVW rp, AX
+:MOVW dreg_word, AX is op_h=0x1 & AX & dreg_word & rp_source=0 {
+    dreg_word = AX;
+}
+
+# MOVW AX, !addr16
+:MOVW AX, addr16w is opcode=0xAF & AX; addr16w {
+    AX = addr16w;
+}
+
+# MOVW !addr16, AX
+:MOVW addr16w, AX is opcode=0xBF & AX; addr16w {
+    addr16w = AX;
+}
+
+# MOVW AX, [DE]
+:MOVW AX, AddrDEW is opcode=0xA9 & AX & AddrDEW {
+    AX = AddrDEW;
+}
+
+# MOVW [DE], AX
+:MOVW AddrDEW, AX is opcode=0xB9 & AX & AddrDEW {
+    AddrDEW = AX;
+}
+
+# MOVW AX, [DE+byte]
+:MOVW AX, AddrDEOffsetW is opcode=0xAA & AX; AddrDEOffsetW {
+    AX = AddrDEOffsetW;
+}
+
+# MOVW [DE+byte], AX
+:MOVW AddrDEOffsetW, AX is opcode=0xBA & AX; AddrDEOffsetW {
+    AddrDEOffsetW = AX;
+}
+
+# MOVW AX, [HL]
+:MOVW AX, AddrHLW is opcode=0xAB & AX & AddrHLW {
+    AX = AddrHLW;
+}
+
+# MOVW [HL], AX
+:MOVW AddrHLW, AX is opcode=0xBB & AX & AddrHLW {
+    AddrHLW = AX;
+}
+
+# MOVW AX, [HL+byte]
+:MOVW AX, AddrHLOffsetW is opcode=0xAC & AX; AddrHLOffsetW {
+    AX = AddrHLOffsetW;
+}
+
+# MOVW [HL+byte], AX
+:MOVW AddrHLOffsetW, AX is opcode=0xBC & AX; AddrHLOffsetW {
+    AddrHLOffsetW = AX;
+}
+
+# MOVW AX, word[B]
+:MOVW AX, AddrWordOffsetB is opcode=0x59 & AX; AddrWordOffsetB {
+    AX = AddrWordOffsetB;
+}
+
 #
 # Table 5/30
 #
+
+# MOVW word[B], AX
+:MOVW AddrWordOffsetB, AX is opcode=0x58 & AX; AddrWordOffsetB {
+    AddrWordOffsetB = AX;
+}
+
+# MOVW AX, word[C]
+:MOVW AX, AddrWordOffsetC is opcode=0x69 & AX; AddrWordOffsetC {
+    AX = AddrWordOffsetC;
+}
+
+# MOVW word[C], AX
+:MOVW AddrWordOffsetC, AX is opcode=0x68 & AX; AddrWordOffsetC {
+    AddrWordOffsetC = AX;
+}
+
+# MOVW AX, word[BC]
+:MOVW AX, AddrWordOffsetBC is opcode=0x79 & AX; AddrWordOffsetBC {
+    AX = AddrWordOffsetBC;
+}
+
+# MOVW AX, [SP+byte]
+:MOVW AX, AddrSPOffsetW is opcode=0xA8 & AX; AddrSPOffsetW {
+    AX = AddrSPOffsetW;
+}
+
+# MOVW [SP+byte], AX
+:MOVW AddrSPOffsetW, AX is opcode=0xB8 & AX; AddrSPOffsetW {
+    AddrSPOffsetW = AX;
+}
+
+# MOVW BC, saddrp
+:MOVW BC, saddrp is opcode=0xDA & BC; saddrp {
+    BC = saddrp;
+}
+
+# MOVW BC, !addr16
+:MOVW BC, addr16w is opcode=0xDB & BC; addr16w {
+    BC = addr16w;
+}
+
+# MOVW DE, saddrp
+:MOVW DE, saddrp is opcode=0xEA & DE; saddrp {
+    DE = saddrp;
+}
+
+# MOVW DE, !addr16
+:MOVW DE, addr16w is opcode=0xEB & DE; addr16w {
+    DE = addr16w;
+}
+
+# MOVW HL, saddrp
+:MOVW HL, saddrp is opcode=0xFA & HL; saddrp {
+    HL = saddrp;
+}
+
+# MOVW HL, !addr16
+:MOVW HL, addr16w is opcode=0xFB & HL; addr16w {
+    HL = addr16w;
+}
+
+# XCHW AX, rp
+:XCHW AX, dreg_word is op_h=0x3 & rp_source=1 & dreg_word & AX {
+    local tmp = AX;
+    AX = dreg_word;
+    dreg_word = AX;
+}
 
 # ONEW AX
 :ONEW AX is opcode=0xE6 & AX {
