@@ -194,7 +194,7 @@ define token data16 (16)
 #########################################################################
 
 macro inst_xch(dst, src) {
-    local tmp = dst;
+    local tmp:1 = dst;
     dst = src;
     src = tmp;
 }
