@@ -193,6 +193,12 @@ define token data16 (16)
 #
 #########################################################################
 
+macro inst_xch(dst, src) {
+    local tmp = dst;
+    dst = src;
+    src = tmp;
+}
+
 macro inst_inc(dst) {
     dst = dst + 1;
     Z = (dst == 0);
@@ -701,6 +707,65 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 # MOV X, !addr16
 :MOV X, addr16 is opcode=0xD9 & X; addr16 {
     X = addr16;
+}
+
+#
+# Table 3/30
+#
+
+# XCH A, X
+:XCH A, X is opcode=0x08 & A & X {
+    inst_xch(A, X);
+}
+
+# XCH A, r
+:XCH A, sreg2_byte is opcode=0x61 & A; op2_h=0x10 & sreg2_byte {
+    inst_xch(A, sreg2_byte);
+}
+
+# XCH A, saddr
+:XCH A, saddr is opcode=0x61 & A; opcode=0xA8; saddr {
+    inst_xch(A, saddr);
+}
+
+# XCH A, sfr
+:XCH A, sfr_byte is opcode=0x61 & A; opcode=0xAB; sfr_byte {
+    inst_xch(A, sfr_byte);
+}
+
+# XCH A, !addr16
+:XCH A, addr16 is opcode=0x61 & A; opcode=0xAA; addr16 {
+    inst_xch(A, addr16);
+}
+
+# XCH A, [DE]
+:XCH A, AddrDE is opcode=0x61 & A; opcode=0xAE & AddrDE {
+    inst_xch(A, AddrDE);
+}
+
+# XCH A, [DE+byte]
+:XCH A, AddrDEOffset is opcode=0x61 & A; opcode=0xAF; AddrDEOffset {
+    inst_xch(A, AddrDEOffset);
+}
+
+# XCH A, [HL]
+:XCH A, AddrHL is opcode=0x61 & A; opcode=0xAC & AddrHL {
+    inst_xch(A, AddrHL);
+}
+
+# XCH A, [HL+byte]
+:XCH A, AddrHLOffset is opcode=0x61 & A; opcode=0xAD; AddrHLOffset {
+    inst_xch(A, AddrHLOffset);
+}
+
+# XCH A, [HL+B]
+:XCH A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xB9 & AddrHLOffsetB {
+    inst_xch(A, AddrHLOffsetB);
+}
+
+# XCH A, [HL+C]
+:XCH A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xA9 & AddrHLOffsetC {
+    inst_xch(A, AddrHLOffsetC);
 }
 
 #
