@@ -2091,3 +2091,38 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 :CLR1 A"."bit_op_n is opcode=0x71 & A; op_l=0xB & bit_op_n & mov1_sreg=1 {
     inst_clr1(A, bit_op_n);
 }
+
+#
+# Table 24/30
+#
+
+# CLR1 !addr16.n
+:CLR1 addr16"."bit_op_n is opcode=0x71; op_l=0x8 & bit_op_n & mov1_sreg=0; addr16 {
+    inst_clr1(addr16, bit_op_n);
+}
+
+# CLR1 PSW.n
+:CLR1 PSW"."bit_op_n is opcode=0x71 & PSW; op_l=0xB & bit_op_n & mov1_sreg=0; opcode=0xFA {
+    inst_clr1(PSW, bit_op_n);
+    update_psw(PSW);
+}
+
+# CLR1 [HL].n
+:CLR1 AddrHL"."bit_op_n is opcode=0x71 & AddrHL; op_l=0x3 & bit_op_n & mov1_sreg=1 {
+    inst_clr1(AddrHL, bit_op_n);
+}
+
+# SET1 CY
+:SET1 CY is opcode=0x71 & CY; opcode=0x80 {
+    inst_set1(CY, 0);
+}
+
+# CLR1 CY
+:CLR1 CY is opcode=0x71 & CY; opcode=0x88 {
+    inst_clr1(CY, 0);
+}
+
+# NOT1 CY
+:NOT1 CY is opcode=0x71 & CY; opcode=0xC0 {
+    CY = ~CY & 0x1;
+}
