@@ -393,6 +393,10 @@ macro inst_xor1(src, bit) {
     CY = CY ^ src_bit;
 }
 
+macro inst_set1(dst, bit) {
+    dst = dst | (1 << bit);
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -2009,4 +2013,28 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 # XOR1 CY, sfr.n
 :XOR1 CY, sfrp"."bit_op_n is opcode=0x71 & CY; op_l=0xF & bit_op_n & mov1_sreg=0; sfrp {
     inst_xor(sfrp, bit_op_n);
+}
+
+#
+# Table 21/30
+#
+
+# XOR1 CY, A.n
+:XOR1 CY, A"."bit_op_n is opcode=0x71 & CY & A; op_l=0xF & bit_op_n & mov1_sreg=1 {
+    inst_xor(A, bit_op_n);
+}
+
+# XOR1 CY, PSW.n
+:XOR1 CY, PSW"."bit_op_n is opcode=0x71 & CY & PSW; op_l=0xF & bit_op_n & mov1_sreg=0; opcode=0xFA {
+    inst_xor(PSW, bit_op_n);
+}
+
+# XOR1 CY, [HL].n
+:XOR1 CY, AddrHL"."bit_op_n is opcode=0x71 & CY & AddrHL; op_l=0x7 & bit_op_n & mov1_sreg=1 {
+    inst_xor(PSW, bit_op_n);
+}
+
+# SET1 saddr.0
+:SET1 saddr"."bit_op_n is opcode=0x71; op_l=0x2 & bit_op_n & mov1_sreg=0; saddr {
+    inst_set1(saddr, bit_op_n);
 }
