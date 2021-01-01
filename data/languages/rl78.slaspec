@@ -132,7 +132,7 @@ define token base2 (8)
     # Bit arithmetic uses the nibble of the second byte
     # to determine the operation (See SHR)
     op2_l       = (0, 3)
-    shr_n       = (4, 7)
+    shift_n     = (4, 7)
     sreg2_byte  = (0, 2);
 attach variables [ sreg2_byte ] [X A C B E D L H];
 
@@ -276,8 +276,25 @@ macro inst_decw(dst) {
 }
 
 macro inst_shr(dst, n) {
+    CY = (dst:1 & 0x01) != 0;
+    dst = dst >> n;
+}
+
+macro inst_shl(dst, n) {
+    CY = (dst:1 & 0x80) != 0;
+    dst = dst << n;
+}
+
+macro inst_shlw(dst, n) {
+    CY = (dst:2 & 0x8000) != 0;
+    dst = dst << n;
+}
+
+macro inst_sar(dst, n) {
+    local msb:1 = dst & 0x80;
     CY = dst:1 & 0x01;
     dst = dst >> n;
+    dst = dst & msb;
 }
 
 macro inst_cmp(dst, src) {
@@ -1727,11 +1744,50 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 }
 
 # SHR A, n
-:SHR A, shr_n is opcode=0x31 & A; op2_l=0xA & shr_n {
-    inst_shr(A, shr_n);
+:SHR A, shift_n is opcode=0x31 & A; op2_l=0xA & shift_n {
+    inst_shr(A, shift_n);
 }
 
 # SHRW AX, n
-:SHRW AX, shr_n is opcode=0x31 & AX; op2_l=0xE & shr_n {
-    inst_shr(AX, shr_n);
+:SHRW AX, shift_n is opcode=0x31 & AX; op2_l=0xE & shift_n {
+    inst_shr(AX, shift_n);
 }
+
+#
+# Table 14/30
+#
+
+# SHL A, n
+:SHL A, shift_n is opcode=0x31 & A; op2_l=0x9 & shift_n {
+    inst_shl(A, shift_n);
+}
+
+# SHL B, n
+:SHL B, shift_n is opcode=0x31 & B; op2_l=0x8 & shift_n {
+    inst_shl(B, shift_n);
+}
+
+# SHL C, n
+:SHL C, shift_n is opcode=0x31 & C; op2_l=0x7 & shift_n {
+    inst_shl(C, shift_n);
+}
+
+# SHLW AX, n
+:SHLW AX, shift_n is opcode=0x31 & AX; op2_l=0xD & shift_n {
+    inst_shlw(AX, shift_n);
+}
+
+# SHLW BC, n
+:SHLW BC, shift_n is opcode=0x31 & BC; op2_l=0xC & shift_n {
+    inst_shlw(BC, shift_n);
+}
+
+#
+# Table 15/30
+#
+
+# SAR A, n
+:SAR A, shift_n is opcode=0x31 & A; op2_l=0xB & shift_n {
+    inst_sar(A, shift_n);
+}
+
