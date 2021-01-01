@@ -125,6 +125,9 @@ attach variables [ dreg_axbc ] [X A C B];
 attach variables [ dreg_word ] [AX BC DE HL];
 
 define token base2 (8)
+    # NOTE: Many arithmetic instructions that act upon registers
+    # alone are decoded by the upper 5 bits of the second byte
+    # of the opcode. Ex. XOR 0x78 >> 3 -> 0xf
     op2_h = (3, 7)
     sreg2_byte = (0, 2);
 attach variables [ sreg2_byte ] [X A C B E D L H];
@@ -219,6 +222,40 @@ macro inst_movs(dst) {
     dst = X;
     Z = (X == 0);
     CY = (X == 0) | (A == 0);
+}
+
+macro inst_add(dst, src) {
+    dst = dst + src;
+    Z = (dst == 0);
+    CY = carry(dst, src);
+    AC = (dst & 0x04) < (src & 0x04);
+}
+
+macro inst_addc(dst, src) {
+    dst = dst + CY;
+    inst_add(dst, src);
+}
+
+macro inst_sub(dst, src) {
+    dst = dst - src;
+    Z = (dst == 0);
+    CY = sborrow(dst, src);
+    AC = (dst & 0x08) >= (src & 0x08);
+}
+
+macro inst_subc(dst, src) {
+    dst = dst - CY;
+    inst_sub(dst, src);
+}
+
+macro inst_and(dst, src) {
+    dst = dst & src;
+    Z = (dst == 0);
+}
+
+macro inst_or(dst, src) {
+    dst = dst | src;
+    Z = (dst == 0);
 }
 
 macro inst_xor(dst, src) {
@@ -999,6 +1036,322 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 }
 
 #
+# Table 6/30
+#
+
+# ADD A, #byte
+:ADD A, u8 is opcode=0x0C & A; u8 {
+    inst_add(A, u8);
+}
+
+# ADD saddr, #byte
+:ADD saddr, u8 is opcode=0x0A; saddr; u8 {
+    inst_add(saddr, u8);
+}
+
+# ADD A, r
+:ADD A, sreg2_byte is opcode=0x61 & A; op2_h=0x01 & sreg2_byte {
+    inst_add(A, sreg2_byte);
+}
+
+# ADD r, A
+:ADD sreg2_byte, A is opcode=0x61 & A; op2_h=0x00 & sreg2_byte {
+    inst_add(sreg2_byte, A);
+}
+
+# ADD A, saddr
+:ADD A, saddr is opcode=0x0B & A; saddr {
+    inst_add(A, saddr);
+}
+
+# ADD A, !addr16
+:ADD A, addr16 is opcode=0x0F & A; addr16 {
+    inst_add(A, addr16);
+}
+
+# ADD A, [HL]
+:ADD A, AddrHL is opcode=0x0D & A & AddrHL {
+    inst_add(A, AddrHL);
+}
+
+# ADD A, [HL+byte]
+:ADD A, AddrHLOffset is opcode=0x0E & A; AddrHLOffset {
+    inst_add(A, AddrHLOffset);
+}
+
+# ADD A, [HL+B]
+:ADD A, AddrHLOffsetB is opcode=0x61 & A; opcode=0x80 & AddrHLOffsetB {
+    inst_add(A, AddrHLOffsetB);
+}
+
+# ADD A, [HL+C]
+:ADD A, AddrHLOffsetC is opcode=0x61 & A; opcode=0x82 & AddrHLOffsetC {
+    inst_add(A, AddrHLOffsetC);
+}
+
+# ADDC A, #byte
+:ADDC A, u8 is opcode=0x1C & A; u8 {
+    inst_addc(A, u8);
+}
+
+# ADDC saddr, #byte
+:ADDC saddr, u8 is opcode=0x1A; saddr; u8 {
+    inst_addc(saddr, u8);
+}
+
+# ADDC A, r
+:ADDC A, sreg2_byte is opcode=0x61 & A; op2_h=0x3 & sreg2_byte {
+    inst_addc(A, sreg2_byte);
+}
+
+# ADDC r, A
+:ADDC sreg2_byte, A is opcode=0x61 & A; op2_h=0x2 & sreg2_byte {
+    inst_addc(A, sreg2_byte);
+}
+
+#
+# Table 7/30
+#
+
+# ADDC A, saddr
+:ADDC A, saddr is opcode=0x1B & A; saddr {
+    inst_addc(A, saddr);
+}
+
+# ADDC A, !uint16
+:ADDC A, addr16 is opcode=0x1F & A; addr16 {
+    inst_addc(A, addr16);
+}
+
+# ADDC A, [HL]
+:ADDC A, AddrHL is opcode=0x1D & A & AddrHL {
+    inst_addc(A, AddrHL);
+}
+
+# ADDC A, [HL+byte]
+:ADDC A, AddrHLOffset is opcode=0x1E & A; AddrHLOffset {
+    inst_addc(A, AddrHLOffset);
+}
+
+# ADDC A, [HL+B]
+:ADDC A, AddrHLOffsetB is opcode=0x61 & A; opcode=0x90 & AddrHLOffsetB {
+    inst_addc(A, AddrHLOffsetB);
+}
+
+# ADDC A, [HL+C]
+:ADDC A, AddrHLOffsetC is opcode=0x61 & A; opcode=0x92 & AddrHLOffsetC {
+    inst_addc(A, AddrHLOffsetC);
+}
+
+# SUB A, #byte
+:SUB A, u8 is opcode=0x2C & A; u8 {
+    inst_sub(A, u8);
+}
+
+# SUB saddr, #byte
+:SUB saddr, u8 is opcode=0x2A; saddr; u8 {
+    inst_sub(saddr, u8);
+}
+
+# SUB A, r
+:SUB A, sreg2_byte is opcode=0x61 & A; op2_h=0x5 & sreg2_byte {
+    inst_sub(A, sreg2_byte);
+}
+
+# SUB r, A
+:SUB sreg2_byte, A is opcode=0x61 & A; op2_h=0x4 & sreg2_byte {
+    inst_sub(sreg2_byte, A);
+}
+
+# SUB A, saddr
+:SUB A, saddr is opcode=0x2B & A; saddr {
+    inst_sub(A, saddr);
+}
+
+# SUB A, !addr16
+:SUB A, addr16 is opcode=0x2F & A; addr16 {
+    inst_sub(A, addr16);
+}
+
+# SUB A, [HL]
+:SUB A, AddrHL is opcode=0x2D & A & AddrHL {
+    inst_sub(A, AddrHL);
+}
+
+# SUB A, [HL+byte]
+:SUB A, AddrHLOffset is opcode=0x2E & A; AddrHLOffset {
+    inst_sub(A, AddrHLOffset);
+}
+
+# SUB A, [HL+B]
+:SUB A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xA0 & AddrHLOffsetB {
+    inst_sub(A, AddrHLOffsetB);
+}
+
+# SUB A, [HL+C]
+:SUB A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xA2 & AddrHLOffsetC {
+    inst_sub(A, AddrHLOffsetC);
+}
+
+#
+# Table 8/30
+#
+
+# SUBC A, #byte
+:SUBC A, u8 is opcode=0x3C & A; u8 {
+    inst_subc(A, u8);
+}
+
+# SUBC saddr, #byte
+:SUBC saddr, u8 is opcode=0x3A; saddr; u8 {
+    inst_subc(saddr, u8);
+}
+
+# SUBC A, r
+:SUBC A, sreg2_byte is opcode=0x61 & A; op2_h=0x7 & sreg2_byte {
+    inst_subc(A, sreg2_byte);
+}
+
+# SUBC r, A
+:SUBC sreg2_byte, A is opcode=0x61 & A; op2_h=0x6 & sreg2_byte {
+    inst_subc(sreg2_byte, A);
+}
+
+# SUBC A, saddr
+:SUBC A, saddr is opcode=0x3B & A; saddr {
+    inst_subc(A, saddr);
+}
+
+# SUBC A, !addr16
+:SUBC A, addr16 is opcode=0x3F & A; addr16 {
+    inst_subc(A, addr16);
+}
+
+# SUBC A, [HL]
+:SUBC A, AddrHL is opcode=0x3D & A & AddrHL {
+    inst_subc(A, AddrHL);
+}
+
+# SUBC A, [HL+byte]
+:SUBC A, AddrHLOffset is opcode=0x3E & A; AddrHLOffset {
+    inst_subc(A, AddrHLOffset);
+}
+
+# SUBC A, [HL+B]
+:SUBC A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xB0 & AddrHLOffsetB {
+    inst_subc(A, AddrHLOffsetB);
+}
+
+# SUBC A, [HL+C]
+:SUBC A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xB2 & AddrHLOffsetC {
+    inst_subc(A, AddrHLOffsetC);
+}
+
+# AND A, #byte
+:AND A, u8 is opcode=0x5C & A; u8 {
+    inst_and(A, u8);
+}
+
+# AND saddr, #byte
+:AND saddr, u8 is opcode=0x5A; saddr; u8 {
+    inst_and(saddr, u8);
+}
+
+# AND A, r
+:AND A, sreg2_byte is opcode=0x61 & A; op2_h=0xB & sreg2_byte {
+    inst_and(A, sreg2_byte);
+}
+
+# AND r, A
+:AND sreg2_byte, A is opcode=0x61 & A; op2_h=0xA & sreg2_byte {
+    inst_and(sreg2_byte, A);
+}
+
+#
+# Table 9/30
+#
+
+# AND A, saddr
+:AND A, saddr is opcode=0x5B & A; saddr {
+    inst_and(A, saddr);
+}
+
+# AND A, !addr16
+:AND A, addr16 is opcode=0x5F & A; addr16 {
+    inst_and(A, addr16);
+}
+
+# AND A, [HL]
+:AND A, AddrHL is opcode=0x5D & A & AddrHL {
+    inst_and(A, AddrHL);
+}
+
+# AND A, [HL+byte]
+:AND A, AddrHLOffset is opcode=0x5E & A; AddrHLOffset {
+    inst_and(A, AddrHLOffset);
+}
+
+# AND A, [HL+B]
+:AND A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xD0 & AddrHLOffsetB {
+    inst_and(A, AddrHLOffsetB);
+}
+
+# AND A, [HL+C]
+:AND A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xD2 & AddrHLOffsetC {
+    inst_and(A, AddrHLOffsetC);
+}
+
+# OR A, #byte
+:OR A, u8 is opcode=0x6C & A; u8 {
+    inst_or(A, u8);
+}
+
+# OR saddr, #byte
+:OR saddr, u8 is opcode=0x6A; saddr; u8 {
+    inst_or(saddr, u8);
+}
+
+# OR A, r
+:OR A, sreg2_byte is opcode=0x61 & A; op2_h=0xD & sreg2_byte {
+    inst_or(A, sreg2_byte);
+}
+
+# OR r, A
+:OR sreg2_byte, A is opcode=0x61 & A; op2_h=0xC & sreg2_byte {
+    inst_or(sreg2_byte, A);
+}
+
+# OR A, saddr
+:OR A, saddr is opcode=0x6B & A; saddr {
+    inst_or(A, saddr);
+}
+
+# OR A, !addr16
+:OR A, addr16 is opcode=0x6F & A; addr16 {
+    inst_or(A, addr16);
+}
+
+# OR A, [HL]
+:OR A, AddrHL is opcode=0x6D & A & AddrHL {
+    inst_or(A, AddrHL);
+}
+
+# OR A, [HL+byte]
+:OR A, AddrHLOffset is opcode=0x6E & A; AddrHLOffset {
+    inst_or(A, AddrHLOffset);
+}
+
+# OR A, [HL+B]
+:OR A, AddrHLOffsetB is opcode=0x61 & A; opcode=0xE0 & AddrHLOffsetB {
+    inst_or(A, AddrHLOffsetB);
+}
+
+# OR A, [HL+C]
+:OR A, AddrHLOffsetC is opcode=0x61 & A; opcode=0xE2 & AddrHLOffsetC {
+    inst_or(A, AddrHLOffsetC);
+}
+
+#
 # Table 10/30
 #
 
@@ -1011,10 +1364,6 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 :XOR saddr, u8 is opcode=0x7A; saddr; u8 {
     inst_xor(saddr, u8);
 }
-
-# NOTE: The following XOR instructions differ by a single bit
-# The high 5 bits of the second byte of the opcode get shifted
-# by 3 bits when extracted from the byte. 0x78 >> 3 -> 0xf
 
 # XOR A, r
 :XOR A, sreg2_byte is opcode=0x61 & A; op2_h=0xf & sreg2_byte {
