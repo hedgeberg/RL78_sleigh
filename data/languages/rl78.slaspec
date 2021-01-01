@@ -116,6 +116,8 @@ define token base (8)
     # Whether an rp (16-bit) register is the data source
     rp_source = (0, 0)
     mov1_sreg   = (7, 7)
+    # The n'th bit to use for *1 instructions
+    bit_op_n = (4, 6)
     movw_op = (3, 3)
     dreg_word = (1, 2)
     dreg_byte = (0, 2)
@@ -363,6 +365,20 @@ macro inst_rolwc(dst) {
     dst = dst << 1;
     dst = dst | zext(CY);
     CY = msb;
+}
+
+macro mov1_read(dst, src, bit) {
+    dst = (src & (1 << bit)) != 0;
+}
+
+macro mov1_write(dst, src, bit) {
+    dst = dst | (src & (1 << bit));
+}
+
+# Destination for AND1 is always CY
+macro inst_and1(src, bit) {
+    local src_bit:1 = (src & (1 << bit)) >> bit;
+    CY = CY & src_bit;
 }
 
 #########################################################################
@@ -1854,8 +1870,8 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 }
 
 # MOV1 CY, saddr.n
-:MOV1 CY, saddr"."op_h is opcode=0x71 & CY; op_l=0x4 & op_h & mov1_sreg=0; saddr {
-    CY = (saddr & (1 << op_h)) != 0;
+:MOV1 CY, saddr"."bit_op_n is opcode=0x71 & CY; op_l=0x4 & bit_op_n & mov1_sreg=0; saddr {
+    mov1_read(CY, saddr, bit_op_n);
 }
 
 #
@@ -1863,27 +1879,75 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 #
 
 # MOV1 CY, sfr.n
-:MOV1 CY, sfrp"."op_h is opcode=0x71 & CY; op_l=0xC & op_h & mov1_sreg=0; sfrp {
-    #CY = (sfrp & (1 << op_h)) != 0;
+:MOV1 CY, sfrp"."bit_op_n is opcode=0x71 & CY; op_l=0xC & bit_op_n & mov1_sreg=0; sfrp {
+    mov1_read(CY, sfrp, bit_op_n);
 }
 
 # MOV1 CY, A.n
-:MOV1 CY, A"."op_h is opcode=0x71 & CY & A; op_l=0xC & op_h & mov1_sreg=1 {
-    #CY = (A & (1 << op_h)) != 0;
+:MOV1 CY, A"."bit_op_n is opcode=0x71 & CY & A; op_l=0xC & bit_op_n & mov1_sreg=1 {
+    mov1_read(CY, A, bit_op_n);
 }
 
 # MOV1 CY, PSW.n
-:MOV1 CY, PSW"."op_h is opcode=0x71 & CY & PSW; op_l=0xC & op_h; opcode=0xFA {
-    CY = (PSW & (1 << op_h)) != 0;
+:MOV1 CY, PSW"."bit_op_n is opcode=0x71 & CY & PSW; op_l=0xC & bit_op_n; opcode=0xFA {
+    mov1_read(CY, PSW, bit_op_n);
 }
 
 # MOV1 CY, [HL].0
-:MOV1 CY, AddrHL"."op_h is opcode=0x71 & CY & AddrHL; op_l=0x4 & op_h & mov1_sreg=1 {
-    CY = (AddrHL & (1 << (op_h & 0x7F))) != 0;
+:MOV1 CY, AddrHL"."bit_op_n is opcode=0x71 & CY & AddrHL; op_l=0x4 & bit_op_n & mov1_sreg=1 {
+    mov1_read(CY, AddrHL, bit_op_n);
 }
 
 # MOV1 saddr.n, CY
-:MOV1 saddr"."op_h, CY is opcode=0x71 & CY; op_l=0x1 & op_h & mov1_sreg=0; saddr {
-    saddr = saddr | (CY & (1 << op_h));
+:MOV1 saddr"."bit_op_n, CY is opcode=0x71 & CY; op_l=0x1 & bit_op_n & mov1_sreg=0; saddr {
+    mov1_write(saddr, CY, bit_op_n);
+}
+
+#
+# Table 17/30
+#
+
+# MOV1 sfr.n, CY
+:MOV1 sfrp"."bit_op_n, CY is opcode=0x71 & CY; op_l=0x9 & bit_op_n & mov1_sreg=0; sfrp {
+    mov1_write(sfrp, CY, bit_op_n);
+}
+
+# MOV1 A.n, CY
+:MOV1 A"."bit_op_n & 0x7, CY is opcode=0x71 & CY & A; op_l=0x9 & bit_op_n & mov1_sreg=1 {
+    mov1_write(A, CY, bit_op_n);
+}
+
+# MOV1 PSW.n, CY
+:MOV1 PSW"."bit_op_n, CY is opcode=0x71 & CY & PSW; op_l=0x9 & bit_op_n & mov1_sreg=0; opcode=0xFA {
+    mov1_write(PSW, CY, bit_op_n);
+}
+
+# MOV1 [HL].n, CY
+:MOV1 AddrHL"."bit_op_n, CY is opcode=0x71 & CY & AddrHL; op_l=0x1 & bit_op_n & mov1_sreg=1 {
+    mov1_write(AddrHL, CY, bit_op_n);
+}
+
+#
+# Table 18/30
+#
+
+# AND1 CY, saddr.n
+:AND1 CY, saddr"."bit_op_n is opcode=0x71 & CY; op_l=0x5 & bit_op_n & mov1_sreg=0; saddr {
+    inst_and1(saddr, bit_op_n);
+}
+
+# AND1 CY, sfr.n
+:AND1 CY, sfrp"."bit_op_n is opcode=0x71 & CY; op_l=0xD & bit_op_n & mov1_sreg=0; sfrp {
+    inst_and1(sfrp, bit_op_n);
+}
+
+# AND1 CY, A.n
+:AND1 CY, A"."bit_op_n is opcode=0x71 & CY & A; op_l=0xD & bit_op_n & mov1_sreg=1 {
+    inst_and1(A, bit_op_n);
+}
+
+# AND1 CY, PSW.n
+:AND1 CY, PSW"."bit_op_n is opcode=0x71 & CY & PSW; op_l=0xD & bit_op_n & mov1_sreg=0; opcode=0xFA {
+    inst_and1(PSW, bit_op_n);
 }
 
