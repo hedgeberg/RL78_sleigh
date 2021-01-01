@@ -397,6 +397,10 @@ macro inst_set1(dst, bit) {
     dst = dst | (1 << bit);
 }
 
+macro inst_clr1(dst, bit) {
+    dst = dst & (~dst & (0 << bit));
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -2067,4 +2071,23 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 # SET1 [HL].n
 :SET1 AddrHL"."bit_op_n is opcode=0x71; op_l=0x2 & bit_op_n & mov1_sreg=1 & AddrHL {
     inst_set1(AddrHL, bit_op_n);
+}
+
+#
+# Table 23/30
+#
+
+# CLR1 saddr.n
+:CLR1 saddr"."bit_op_n is opcode=0x71; op_l=0x3 & bit_op_n & mov1_sreg=0; saddr {
+    inst_clr1(saddr, bit_op_n);
+}
+
+# CLR1 sfr.n
+:CLR1 sfrp"."bit_op_n is opcode=0x71; op_l=0xB & bit_op_n & mov1_sreg=0; sfrp {
+    inst_clr1(sfrp, bit_op_n);
+}
+
+# CLR1 A.n
+:CLR1 A"."bit_op_n is opcode=0x71 & A; op_l=0xB & bit_op_n & mov1_sreg=1 {
+    inst_clr1(A, bit_op_n);
 }
