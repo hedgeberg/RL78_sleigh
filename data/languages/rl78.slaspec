@@ -128,8 +128,12 @@ define token base2 (8)
     # NOTE: Many arithmetic instructions that act upon registers
     # alone are decoded by the upper 5 bits of the second byte
     # of the opcode. Ex. XOR 0x78 >> 3 -> 0xf
-    op2_h = (3, 7)
-    sreg2_byte = (0, 2);
+    op2_h       = (3, 7)
+    # Bit arithmetic uses the nibble of the second byte
+    # to determine the operation (See SHR)
+    op2_l       = (0, 3)
+    shr_n       = (4, 7)
+    sreg2_byte  = (0, 2);
 attach variables [ sreg2_byte ] [X A C B E D L H];
 
 define token data8 (8)
@@ -261,6 +265,19 @@ macro inst_or(dst, src) {
 macro inst_xor(dst, src) {
     dst = dst ^ src;
     Z = (dst == 0);
+}
+
+macro inst_incw(dst) {
+    dst = dst + 1;
+}
+
+macro inst_decw(dst) {
+    dst = dst - 1;
+}
+
+macro inst_shr(dst, n) {
+    CY = dst:1 & 0x01;
+    dst = dst >> n;
 }
 
 macro inst_cmp(dst, src) {
@@ -1663,4 +1680,58 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 # DEC [HL+byte]
 :DEC AddrHLOffset is opcode=0x61; opcode=0x69; AddrHLOffset {
     inst_dec(AddrHLOffset);
+}
+
+#
+# Table 13
+#
+
+# INCW rp
+:INCW dreg_word is op_h=0xA & dreg_word {
+    inst_incw(dreg_word);
+}
+
+# INCW saddrp
+:INCW saddrp is opcode=0xA6; saddrp {
+    inst_incw(saddrp);
+}
+
+# INCW !addr16
+:INCW addr16w is opcode=0xA2; addr16w {
+    inst_incw(addr16w);
+}
+
+# INCW [HL+byte]
+:INCW AddrHLOffsetW is opcode=0x61; opcode=0x79; AddrHLOffsetW {
+    inst_incw(AddrHLOffsetW);
+}
+
+# DECW rp
+:DECW dreg_word is op_h=0xB & dreg_word {
+    inst_decw(dreg_word);
+}
+
+# DECW saddrp
+:DECW saddrp is opcode=0xB6; saddrp {
+    inst_decw(saddrp);
+}
+
+# DECW !addr16
+:DECW addr16w is opcode=0xB2; addr16w {
+    inst_decw(addr16w);
+}
+
+# DECW [HL+byte]
+:DECW AddrHLOffset is opcode=0x61; opcode=0x89; AddrHLOffset {
+    inst_decw(AddrHLOffset);
+}
+
+# SHR A, n
+:SHR A, shr_n is opcode=0x31 & A; op2_l=0xA & shr_n {
+    inst_shr(A, shr_n);
+}
+
+# SHRW AX, n
+:SHRW AX, shr_n is opcode=0x31 & AX; op2_l=0xE & shr_n {
+    inst_shr(AX, shr_n);
 }
