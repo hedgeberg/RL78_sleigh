@@ -381,6 +381,12 @@ macro inst_and1(src, bit) {
     CY = CY & src_bit;
 }
 
+# Destination for OR1 is always CY
+macro inst_or1(src, bit) {
+    local src_bit:1 = (src & (1 << bit) >> bit);
+    CY = CY | src_bit;
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -1949,5 +1955,29 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 # AND1 CY, PSW.n
 :AND1 CY, PSW"."bit_op_n is opcode=0x71 & CY & PSW; op_l=0xD & bit_op_n & mov1_sreg=0; opcode=0xFA {
     inst_and1(PSW, bit_op_n);
+}
+
+#
+# Table 19/30
+#
+
+# AND1 CY, [HL].n
+:AND1 CY, AddrHL"."bit_op_n is opcode=0x71 & CY & AddrHL; op_l=0x5 & bit_op_n & mov1_sreg=1 {
+    inst_and1(AddrHL, bit_op_n);
+}
+
+# OR1 CY, saddr.n
+:OR1 CY, saddr"."bit_op_n is opcode=0x71 & CY; op_l=0x6 & bit_op_n & mov1_sreg=0; saddr {
+    inst_or1(saddr, bit_op_n);
+}
+
+# OR1 CY, sfr.n
+:OR1 CY, sfrp"."bit_op_n is opcode=0x71 & CY; op_l=0xE & bit_op_n & mov1_sreg=0; sfrp {
+    inst_or1(sfrp, bit_op_n);
+}
+
+# OR1 CY, A.n
+:OR1 CY, A"."bit_op_n is opcode=0x71 & CY & A; op_l=0xE & bit_op_n & mov1_sreg=1 {
+    inst_or1(A, bit_op_n);
 }
 
