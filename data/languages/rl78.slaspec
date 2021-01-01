@@ -115,6 +115,7 @@ define token base (8)
     op_l = (0, 3)
     # Whether an rp (16-bit) register is the data source
     rp_source = (0, 0)
+    mov1_sreg   = (7, 7)
     movw_op = (3, 3)
     dreg_word = (1, 2)
     dreg_byte = (0, 2)
@@ -297,6 +298,13 @@ macro inst_sar(dst, n) {
     dst = dst & msb;
 }
 
+macro inst_sarw(dst, n) {
+    local msb:2 = dst & 0x8000;
+    CY = dst:1 & 0x01;
+    dst = dst >> n;
+    dst = dst & msb; 
+}
+
 macro inst_cmp(dst, src) {
     Z = (dst - src) == 0;
     AC = (dst & 0x08) >= (src & 0x08);
@@ -348,6 +356,13 @@ macro update_psw(data) {
     ISP1   = (data & 0x04) >> 2;
     ISP0   = (data & 0x02) >> 1;
     CY     = (data & 0x01);
+}
+
+macro inst_rolwc(dst) {
+    local msb:1 = (dst & 0x8000) != 0;
+    dst = dst << 1;
+    dst = dst | zext(CY);
+    CY = msb;
 }
 
 #########################################################################
@@ -1789,5 +1804,86 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 # SAR A, n
 :SAR A, shift_n is opcode=0x31 & A; op2_l=0xB & shift_n {
     inst_sar(A, shift_n);
+}
+
+# SARW AX, n
+:SARW AX, shift_n is opcode=0x31 & AX; op2_l=0xF & shift_n {
+    inst_sarw(AX, shift_n);
+}
+
+# ROR A, 1
+:ROR A, 1 is opcode=0x61 & A; opcode=0xDB {
+    local lsb:1 = A & 0x1;
+    CY = (lsb != 0);
+    A = A >> 1;
+    A = A & (CY << 7);
+}
+
+# ROL A, 1
+:ROL A, 1 is opcode=0x61 & A; opcode=0xEB {
+    local msb:1 = A & 0x80;
+    CY = (msb != 0);
+    A = A << 1;
+    A = A | CY;
+}
+
+# RORC A, 1
+:RORC A, 1 is opcode=0x61 & A; opcode=0xFB {
+    local lsb:1 = A & 1;
+    A = A >> 1;
+    A = (CY << 7);
+    CY = lsb;
+}
+
+# ROLC A, 1
+:ROLC A, 1 is opcode=0x61 & A; opcode=0xDC {
+    local msb:1 = (A & 0x80) != 0;
+    A = A << 1;
+    A = A | CY;
+    CY = msb;
+}
+
+# ROLWC AX, 1
+:ROLWC AX, 1 is opcode=0x61 & AX; opcode=0xEE {
+    inst_rolwc(AX);
+}
+
+# ROLWC BC, 1
+:ROLWC BC, 1 is opcode=0x61 & BC; opcode=0xBC {
+    inst_rolwc(BC);
+}
+
+# MOV1 CY, saddr.n
+:MOV1 CY, saddr"."op_h is opcode=0x71 & CY; op_l=0x4 & op_h & mov1_sreg=0; saddr {
+    CY = (saddr & (1 << op_h)) != 0;
+}
+
+#
+# Table 16/30
+#
+
+# MOV1 CY, sfr.n
+:MOV1 CY, sfrp"."op_h is opcode=0x71 & CY; op_l=0xC & op_h & mov1_sreg=0; sfrp {
+    #CY = (sfrp & (1 << op_h)) != 0;
+}
+
+# MOV1 CY, A.n
+:MOV1 CY, A"."op_h is opcode=0x71 & CY & A; op_l=0xC & op_h & mov1_sreg=1 {
+    #CY = (A & (1 << op_h)) != 0;
+}
+
+# MOV1 CY, PSW.n
+:MOV1 CY, PSW"."op_h is opcode=0x71 & CY & PSW; op_l=0xC & op_h; opcode=0xFA {
+    CY = (PSW & (1 << op_h)) != 0;
+}
+
+# MOV1 CY, [HL].0
+:MOV1 CY, AddrHL"."op_h is opcode=0x71 & CY & AddrHL; op_l=0x4 & op_h & mov1_sreg=1 {
+    CY = (AddrHL & (1 << (op_h & 0x7F))) != 0;
+}
+
+# MOV1 saddr.n, CY
+:MOV1 saddr"."op_h, CY is opcode=0x71 & CY; op_l=0x1 & op_h & mov1_sreg=0; saddr {
+    saddr = saddr | (CY & (1 << op_h));
 }
 
