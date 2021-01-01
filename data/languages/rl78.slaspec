@@ -2034,7 +2034,37 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
     inst_xor(PSW, bit_op_n);
 }
 
-# SET1 saddr.0
+# SET1 saddr.n
 :SET1 saddr"."bit_op_n is opcode=0x71; op_l=0x2 & bit_op_n & mov1_sreg=0; saddr {
     inst_set1(saddr, bit_op_n);
+}
+
+#
+# Table 22/30
+#
+
+# SET1 sfr.n
+:SET1 sfrp"."bit_op_n is opcode=0x71; op_l=0xA & bit_op_n & mov1_sreg=0; sfrp {
+    inst_set1(sfrp, bit_op_n);
+}
+
+# SET1 A.n
+:SET1 A"."bit_op_n is opcode=0x71 & A; op_l=0xA & bit_op_n & mov1_sreg=1 {
+    inst_set1(A, bit_op_n);
+}
+
+# SET1 !addr16.n
+:SET1 addr16"."bit_op_n is opcode=0x71; op_l=0 & bit_op_n & mov1_sreg=0; addr16 {
+    inst_set1(addr16, bit_op_n);
+}
+
+# SET1 PSW.n
+:SET1 PSW"."bit_op_n is opcode=0x71 & PSW; op_l=0xA & bit_op_n & mov1_sreg=0; opcode=0xFA {
+    inst_set1(PSW, bit_op_n);
+    update_psw(PSW);
+}
+
+# SET1 [HL].n
+:SET1 AddrHL"."bit_op_n is opcode=0x71; op_l=0x2 & bit_op_n & mov1_sreg=1 & AddrHL {
+    inst_set1(AddrHL, bit_op_n);
 }
