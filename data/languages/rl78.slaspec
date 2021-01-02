@@ -463,6 +463,13 @@ macro inst_bf(src, bit, target) {
     if (!(src & (1 << bit))) goto target;
 }
 
+macro inst_btclr(src, bit, target) {
+    if (!(src & (1 << bit))) goto target;
+    # Clear the bit post-branch, would be a NOP
+    # if the bit was not set in the first place
+    src = (~src & (0 << bit));
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -2503,4 +2510,34 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # BF [HL].n, $addr20
 :BF AddrHL"."bit_op_n, jdisp8 is opcode=0x31 & AddrHL; op_l=0x5 & bit_op_n & mov1_sreg=1; jdisp8 {
     inst_bf(AddrHL, bit_op_n, jdisp8);
+}
+
+#
+# Table 29
+#
+
+# BTCLR saddr.n, $addr20
+:BTCLR saddr"."bit_op_n, jdisp8 is opcode=0x31; op_l=0x0 & bit_op_n & mov1_sreg=0; saddr; jdisp8 {
+    inst_btclr(saddr, bit_op_n, jdisp8);
+}
+
+# BTCLR sfr.n, $addr20
+:BTCLR sfrp"."bit_op_n, jdisp8 is opcode=0x31; op_l=0x0 & bit_op_n & mov1_sreg=1; sfrp; jdisp8 {
+    inst_btclr(sfrp, bit_op_n, jdisp8);
+}
+
+# BTCRL A.n, $addr20
+:BTCLR A"."bit_op_n, jdisp8 is opcode=0x31 & A; op_l=0x1 & bit_op_n & mov1_sreg=0; jdisp8 {
+    inst_btclr(A, bit_op_n, jdisp8);
+}
+
+# BTCLR PSW.n, $addr20
+:BTCLR PSW"."bit_op_n, jdisp8 is opcode=0x31 & PSW; op_l=0x0 & bit_op_n & mov1_sreg=1; opcode=0xFA; jdisp8 {
+    inst_btclr(PSW, bit_op_n, jdisp8);
+    update_psw(PSW);
+}
+
+# BTCRL [HL].n, $addr20
+:BTCLR AddrHL"."bit_op_n, jdisp8 is opcode=0x31 & AddrHL; op_l=0x1 & bit_op_n & mov1_sreg=1; jdisp8 {
+    inst_btclr(AddrHL, bit_op_n, jdisp8);
 }
