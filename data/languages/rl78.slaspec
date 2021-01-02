@@ -2592,7 +2592,7 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # SEL RBn
-:SEL rbs_op_n is opcode=61; op_l=0x8 & rbs_op_n & mov1_sreg=1 {
+:SEL rbs_op_n is opcode=0x61; op_l=0xF & rbs_op_n & mov1_sreg=1 {
     # Update all RBS registers to make sure only one
     # is active at a time.
     RBS0 = (rbs_op_n == 0);
