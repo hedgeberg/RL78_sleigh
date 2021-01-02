@@ -164,6 +164,7 @@ attach variables [ sreg2_byte ] [X A C B E D L H];
 define token data8 (8)
     data        = (0, 7)
     uaddr8      = (0, 7)
+    saddr8      = (0, 7) signed
     sfr_byte    = (0, 7);
 attach variables [ sfr_byte ] [
     SFR00 SFR01 SFR02 SFR03 SFR04 SFR05 SFR06 SFR07
@@ -427,6 +428,37 @@ macro inst_clr1(dst, bit) {
     dst = dst & (~dst & (0 << bit));
 }
 
+macro push_byte(src) {
+    SP = SP - 1;
+    *[stackarea]:1 SP = src;
+    SP = SP - 1;
+    *[stackarea]:1 SP = 0x00:1;
+}
+
+macro pop_byte(dst) {
+    SP = SP + 2;
+    dst = *[stackarea]:1 SP;
+}
+
+macro push_word(src) {
+    SP = SP - 2;
+    *[stackarea]:2 SP = src;
+}
+
+macro pop_word(dst) {
+    SP = SP + 2;
+    dst = *[stackarea]:2 SP;
+}
+
+macro branch(target) {
+    PC = target;
+    goto target;
+}
+
+macro inst_bt(src, bit, target) {
+    if (src & (1 << bit)) goto target;
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -477,6 +509,10 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
 sfrpw: sfr_byte is sfr_byte {
     local tmp:3 = zext(sfr_byte);
     export *:2 tmp;
+}
+
+jdisp8: loc is saddr8 [ loc = inst_next + saddr8; ] {
+    export *:3 loc;
 }
 
 jdisp16: loc is saddr16 [ loc = inst_next + saddr16; ] {
@@ -2279,4 +2315,140 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     SP = SP + 1;
 
     return [PC];
+}
+
+#
+# Table 26/30
+#
+
+# PUSH PSW
+:PUSH PSW is opcode=0x61 & PSW; opcode=0xDD {
+    push_byte(PSW);
+}
+
+# PUSH rp
+:PUSH dreg_word is op_h=0xC & dreg_word & rp_source=1 {
+    push_word(dreg_word);
+}
+
+# POP PSW
+:POP PSW is opcode=0x61 & PSW; opcode=0xCD {
+    pop_byte(PSW);
+}
+
+# POP rp
+:POP dreg_word is op_h=0xC & dreg_word & rp_source=0 {
+    pop_word(dreg_word);
+}
+
+# MOVW SP, #word
+:MOVW SP, u16 is opcode=0xCB & SP; opcode=0xF8; u16 {
+    SP = u16;
+}
+
+# MOVW SP, AX
+:MOVW SP, AX is opcode=0xBE & SP & AX; opcode=0xF8 {
+    SP = AX;
+}
+
+# MOVW AX, SP
+:MOVW AX, SP is opcode=0xAE & SP & AX; opcode=0xF8 {
+    AX = SP;
+}
+
+# The following show an additional addr16 on the opcode in
+# the ISA documentation. This looks like it may be a documentation
+# error as they're all register operands.
+# They're also commented out as they conflict with other MOVW instructions... See MOVW BC, !addr16 for example.
+
+# MOVW BC, SP
+#:MOVW BC, SP is opcode=0xDB & BC & SP {
+#    BC = SP;
+#}
+
+# MOVW DE, SP
+#:MOVW DE, SP is opcode=0xEB & DE & SP {
+#    DE = SP;
+#}
+
+# MOVW HL, SP
+#:MOVW HL, SP is opcode=0xFB & HL & SP {
+#    HL = SP;
+#}
+
+# ADDW SP, #byte
+:ADDW SP, u8 is opcode=0x10 & SP; u8 {
+    SP = SP + zext(u8);
+}
+
+# SUBW SP, #byte
+:SUBW SP, u8 is opcode=0x20 & SP; u8 {
+    SP = SP - zext(u8);
+}
+
+# BR AX
+:BR AX is opcode=0x61 & AX; opcode=0xCB {
+    branch(zext(AX));
+}
+
+# BR $addr20
+:BR jdisp8 is opcode=0xEF; jdisp8 {
+    branch(jdisp8);
+}
+
+# BR $!addr20
+:BR jdisp16 is opcode=0xEE; jdisp16 {
+    branch(jdisp16);
+}
+
+# BR !addr16
+:BR addr16 is opcode=0xED; addr16 {
+    branch(zext(addr16));
+}
+
+# BR !!addr20
+:BR addr20 is opcode=0xEC; addr20 {
+    branch(zext(addr20));
+}
+
+# BC $addr20
+# P-code doesn't allow for conditional register updates
+# Only a conditional goto
+:BC jdisp8 is opcode=0xDC; jdisp8 {
+    if (CY) goto jdisp8;
+}
+
+# BNC $addr20
+:BNC jdisp8 is opcode=0xDE; jdisp8 {
+    if (!CY) goto jdisp8;
+}
+
+# BZ $addr20
+:BZ jdisp8 is opcode=0xDD; jdisp8 {
+    if (Z) goto jdisp8;
+}
+
+# BNZ $addr20
+:BNZ jdisp8 is opcode=0xDF; jdisp8 {
+    if (!Z) goto jdisp8;
+}
+
+# BH $addr20
+:BH jdisp8 is opcode=0x61; opcode=0xC3; jdisp8 {
+    if (!(Z | CY)) goto jdisp8;
+}
+
+# BNH $addr20
+:BNH jdisp8 is opcode=0x61; opcode=0xD3; jdisp8 {
+    if (Z | CY) goto jdisp8;
+}
+
+# BT saddr.n, $addr20
+:BT saddr"."bit_op_n is opcode=0x31; op_l=0x2 & bit_op_n & mov1_sreg=0; saddr; jdisp8 {
+    inst_bt(saddr, bit_op_n, jdisp8);
+}
+
+# BT sfr.n; $addr20
+:BT sfrp"."bit_op_n is opcode=0x31; op_l=0x2 & bit_op_n & mov1_sreg=1; sfrp; jdisp8 {
+    inst_bt(sfrp, bit_op_n, jdisp8);
 }
