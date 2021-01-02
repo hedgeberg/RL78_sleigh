@@ -139,6 +139,8 @@ define token base (8)
     # Register bank selection also uses the same bits
     # as the bitwise operators
     rbs_op_n = (4, 5)
+    # Unused instructions
+    clrb_unused = (2, 3)
     movw_op = (3, 3)
     call_rp = (4, 6)
     dreg_word = (1, 2)
@@ -1003,7 +1005,7 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # CLRB r
-:CLRB dreg_axbc is op_h=0xF & dreg_axbc {
+:CLRB dreg_axbc is op_h=0xF & dreg_axbc & clrb_unused=0  {
     dreg_axbc = 0;
 }
 
