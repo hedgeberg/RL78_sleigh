@@ -544,6 +544,10 @@ jdisp8: loc is saddr8 [ loc = inst_next + saddr8; ] {
     export *:3 loc;
 }
 
+jaddr16: loc is uaddr16 [ loc = 0x0000 | uaddr16; ] {
+    export *:1 loc;
+}
+
 jdisp16: loc is saddr16 [ loc = inst_next + saddr16; ] {
     export *:3 loc;
 }
@@ -2265,14 +2269,13 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # CALL !addr16
-:CALL addr16 (PC) is opcode=0xFD & PC; addr16 {
+:CALL jaddr16 (PC) is opcode=0xFD & PC; jaddr16 {
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
     *[stackarea]:3 SP = inst_next;
 
-    PC = zext(addr16);
-    call PC;
+    call jaddr16;
 }
 
 # CALL !!addr20
@@ -2287,7 +2290,7 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # CALLT [CALLT]
-:CALLT CALLT_Entry (PC) is opcode=0x61 & PC; CALLT_Entry & op2_callt_hi & op2_callt_low {
+:CALLT CALLT_Entry (PC) is opcode=0x61 & PC; CALLT_Entry & op2_callt_hi & op2_callt_low & op2_b7=1 & op2_b34=0x2 {
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
