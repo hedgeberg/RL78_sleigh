@@ -2480,3 +2480,27 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 :BF saddr"."bit_op_n, jdisp8 is opcode=0x31; op_l=0x4 & bit_op_n & mov1_sreg=0; saddr; jdisp8 {
     inst_bf(saddr, bit_op_n, jdisp8);
 }
+
+#
+# Table 28/30
+#
+
+# BF sfr.n, $addr20
+:BF sfrp"."bit_op_n, jdisp8 is opcode=0x31; op_l=0x4 & bit_op_n & mov1_sreg=1; sfrp; jdisp8 {
+    inst_bf(sfrp, bit_op_n, jdisp8);
+}
+
+# BF A.n, $addr20
+:BF A"."bit_op_n, jdisp8 is opcode=0x31 & A; op_l=0x5 & bit_op_n & mov1_sreg=0; jdisp8 {
+    inst_bf(A, bit_op_n, jdisp8);
+}
+
+# BF PSW.n, $addr20
+:BF PSW"."bit_op_n, jdisp8 is opcode=0x31 & PSW; op_l=0x4 & bit_op_n & mov1_sreg=1; opcode=0xFA; jdisp8 {
+    inst_bf(PSW, bit_op_n, jdisp8);
+}
+
+# BF [HL].n, $addr20
+:BF AddrHL"."bit_op_n, jdisp8 is opcode=0x31 & AddrHL; op_l=0x5 & bit_op_n & mov1_sreg=1; jdisp8 {
+    inst_bf(AddrHL, bit_op_n, jdisp8);
+}
