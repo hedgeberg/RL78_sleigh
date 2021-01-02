@@ -459,6 +459,10 @@ macro inst_bt(src, bit, target) {
     if (src & (1 << bit)) goto target;
 }
 
+macro inst_bf(src, bit, target) {
+    if (!(src & (1 << bit))) goto target;
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -2444,11 +2448,35 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # BT saddr.n, $addr20
-:BT saddr"."bit_op_n is opcode=0x31; op_l=0x2 & bit_op_n & mov1_sreg=0; saddr; jdisp8 {
+:BT saddr"."bit_op_n, jdisp8 is opcode=0x31; op_l=0x2 & bit_op_n & mov1_sreg=0; saddr; jdisp8 {
     inst_bt(saddr, bit_op_n, jdisp8);
 }
 
-# BT sfr.n; $addr20
-:BT sfrp"."bit_op_n is opcode=0x31; op_l=0x2 & bit_op_n & mov1_sreg=1; sfrp; jdisp8 {
+# BT sfr.n, $addr20
+:BT sfrp"."bit_op_n, jdisp8 is opcode=0x31; op_l=0x2 & bit_op_n & mov1_sreg=1; sfrp; jdisp8 {
     inst_bt(sfrp, bit_op_n, jdisp8);
+}
+
+#
+# Table 27/30
+#
+
+# BT A.n, $addr20
+:BT A"."bit_op_n, jdisp8 is opcode=0x31 & A; op_l=0x3 & bit_op_n & mov1_sreg=0; jdisp8 {
+    inst_bt(A, bit_op_n, jdisp8);
+}
+
+# BT PSW.n, $addr20
+:BT PSW"."bit_op_n, jdisp8 is opcode=0x31 & PSW; op_l=0x2 & bit_op_n & mov1_sreg=1; opcode=0xFA; jdisp8 {
+    inst_bt(PSW, bit_op_n, jdisp8);
+}
+
+# BT [HL].n, $addr20
+:BT AddrHL"."bit_op_n, jdisp8 is opcode=0x31 & AddrHL; op_l=0x3 & bit_op_n & mov1_sreg=1; jdisp8 {
+    inst_bt(AddrHL, bit_op_n, jdisp8);
+}
+
+# BF saddr.n, $addr20
+:BF saddr"."bit_op_n, jdisp8 is opcode=0x31; op_l=0x4 & bit_op_n & mov1_sreg=0; saddr; jdisp8 {
+    inst_bf(saddr, bit_op_n, jdisp8);
 }
