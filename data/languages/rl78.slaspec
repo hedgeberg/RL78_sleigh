@@ -37,6 +37,21 @@ define register offset=0x60 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 # Per AVR, they put status flags in their own registers for simplicity
 define register offset=0x70 size=1 [IE Z RBS1 AC RBS0 ISP1 ISP0 CY];
 
+# CALL Table entries
+define ram offset=0x80 size=2 [
+    CALLT80 CALLT82 CALLT84 CALLT86
+    CALLT88 CALLT8A CALLT8C CALLT8E
+
+    CALLT90 CALLT92 CALLT94 CALLT96
+    CALLT98 CALLT9A CALLT9C CALLT9E
+
+    CALLTA0 CALLTA2 CALLTA4 CALLTA6
+    CALLTA8 CALLTAA CALLTAC CALLTAE
+
+    CALLTB0 CALLTB2 CALLTB4 CALLTB6
+    CALLTB8 CALLTBA CALLTBC CALLTBE
+];
+
 # Implementation-specific special function registers, starting from 0xFFF00
 define ram offset=0xFFF00 size=1 [
     SFR00 SFR01 SFR02 SFR03 SFR04 SFR05 SFR06 SFR07
@@ -119,6 +134,7 @@ define token base (8)
     # The n'th bit to use for *1 instructions
     bit_op_n = (4, 6)
     movw_op = (3, 3)
+    call_rp = (4, 6)
     dreg_word = (1, 2)
     dreg_byte = (0, 2)
     dreg_axbc = (0, 1)
@@ -126,8 +142,14 @@ define token base (8)
 attach variables [ dreg_byte sreg_byte ] [X A C B E D L H];
 attach variables [ dreg_axbc ] [X A C B];
 attach variables [ dreg_word ] [AX BC DE HL];
+attach variables [ call_rp ] [ _ _ _ _ AX BC DE HL];
 
 define token base2 (8)
+    # Bits 4, 7 is set and Bit 3 is unset for CALLT instructions
+    op2_b7       = (7, 7)
+    op2_b34      = (3, 4)
+    op2_callt_low = (4, 6)
+    op2_callt_hi  = (0, 1)
     # NOTE: Many arithmetic instructions that act upon registers
     # alone are decoded by the upper 5 bits of the second byte
     # of the opcode. Ex. XOR 0x78 >> 3 -> 0xf
@@ -195,7 +217,11 @@ attach variables [ sfr_byte ] [
 
 define token data16 (16)
     dataw = (0, 15)
-    uaddr16 = (0, 15);
+    uaddr16 = (0, 15)
+    saddr16 = (0, 15) signed;
+
+define token data24 (24)
+    uaddr20 = (0, 19);
 
 #########################################################################
 #
@@ -437,6 +463,10 @@ addr16w: "!"uaddr16 is uaddr16 {
     export *:2 tmp;
 }
 
+addr20: "!!"uaddr20 is uaddr20 {
+    export *:3 uaddr20;
+}
+
 sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
     export *:1 loc;
 }
@@ -447,6 +477,10 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
 sfrpw: sfr_byte is sfr_byte {
     local tmp:3 = zext(sfr_byte);
     export *:2 tmp;
+}
+
+jdisp16: loc is saddr16 [ loc = inst_next + saddr16; ] {
+    export *:3 loc;
 }
 
 # Register Ponter tokens - [r]
@@ -539,6 +573,11 @@ AddrSPOffset: [SP+uaddr8] is SP & uaddr8 {
 AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
     local loc:3 = zext(SP) + uaddr8;
     export *:2 loc;
+}
+
+CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
+    [ ct_entry = 0x80 | ((op2_callt_hi << 4) | op2_callt_low << 1); ] {
+    export *:2 ct_entry;
 }
 
 #########################################################################
@@ -2125,4 +2164,119 @@ AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
 # NOT1 CY
 :NOT1 CY is opcode=0x71 & CY; opcode=0xC0 {
     CY = ~CY & 0x1;
+}
+
+#
+# Table 25/30
+#
+
+#
+# TODO: Don't display PC as part of the disassembly,
+# but removing it from the expression before "is opcode"
+# means it can't be used for calling.
+#
+
+# CALL rp
+:CALL call_rp (PC) is opcode=0x61 & PC; call_rp & op_l=0xA & mov1_sreg=1 {
+    local ret_pc:3 = inst_next;
+    local cs_ext:3 = (zext(CS) & 0xFF) << 16;
+    # From page 21 of the RL78 ISA manual, CALL rp uses register
+    # indirect addressing that uses CS along with the contents
+    # of the register pair.
+    local call_addr:3 = cs_ext | zext(call_rp);
+
+    SP = SP - 1;
+    *[stackarea]:1 SP = 0x00:1;
+    SP = SP - 3;
+    *[stackarea]:3 SP = ret_pc;
+
+    PC = call_addr;
+    call PC;
+}
+
+# CALL $!addr20
+:CALL jdisp16 (PC) is opcode=0xFE & PC; jdisp16 {
+    SP = SP - 1;
+    *[stackarea]:1 SP = 0x00:1;
+    SP = SP - 3;
+    *[stackarea]:3 SP = inst_next;
+
+    PC = jdisp16;
+    call jdisp16;
+}
+
+# CALL !addr16
+:CALL addr16 (PC) is opcode=0xFD & PC; addr16 {
+    SP = SP - 1;
+    *[stackarea]:1 SP = 0x00:1;
+    SP = SP - 3;
+    *[stackarea]:3 SP = inst_next;
+
+    PC = zext(addr16);
+    call PC;
+}
+
+# CALL !!addr20
+:CALL addr20 (PC) is opcode=0xFC & PC; addr20 {
+    SP = SP - 1;
+    *[stackarea]:1 SP = 0x00:1;
+    SP = SP - 3;
+    *[stackarea]:3 SP = inst_next;
+
+    PC = addr20;
+    call PC;
+}
+
+# CALLT [CALLT]
+:CALLT CALLT_Entry (PC) is opcode=0x61 & PC; CALLT_Entry & op2_callt_hi & op2_callt_low {
+    SP = SP - 1;
+    *[stackarea]:1 SP = 0x00:1;
+    SP = SP - 3;
+    *[stackarea]:3 SP = inst_next;
+
+    PC = zext(CALLT_Entry);
+    PC = *PC;
+    call PC;
+} 
+
+# BRK
+:BRK (PC) is opcode=0x61 & PC; opcode=0xCC {
+    SP = SP - 1;
+    *[stackarea]:1 SP = PSW;
+    SP = SP - 3;
+    *[stackarea]:3 SP = inst_next;
+
+    IE = 0;
+    PSW = PSW & 0x7f;
+    update_psw(PSW);
+    PC = 0x007F7E;
+    call PC;
+}
+
+# RET
+:RET (PC) is opcode=0xD7 & PC {
+    PC = *[stackarea]:3 SP;
+    SP = SP + 4;
+
+    return [PC];
+}
+
+# RETI
+:RETI (PC) is opcode=0x61; opcode=0xFC & PC {
+    PC = *[stackarea]:3 SP;
+    SP = SP + 3;
+    update_psw(*[stackarea]:1 SP);
+    SP = SP + 1;
+
+    return [PC];
+}
+
+# RETB
+:RETB (PC) is opcode=0x61; opcode=0xEC & PC {
+    PC = *[stackarea]:3 SP;
+    SP = SP + 3;
+    update_psw(*[stackarea]:1 SP);
+    SP = SP + 1;
+
+    return [PC];
 }
