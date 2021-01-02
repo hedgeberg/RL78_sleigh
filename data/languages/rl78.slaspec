@@ -121,6 +121,9 @@ define pcodeop divwu;
 define pcodeop machu;
 define pcodeop mach;
 
+define pcodeop disable_interrupts;
+define pcodeop enable_interrupts;
+
 #########################################################################
 #
 # Instruction token and field definitions
@@ -2602,12 +2605,14 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 :EI is opcode=0x71; opcode=0x7A; opcode=0xFA {
     PSW = PSW | (1 << 7);
     update_psw(PSW);
+    enable_interrupts();
 }
 
 # DI
 :DI is opcode=0x71; opcode=0x7B; opcode=0xFA {
     PSW = PSW & (0 << 7);
     update_psw(PSW);
+    disable_interrupts();
 }
 
 # HALT

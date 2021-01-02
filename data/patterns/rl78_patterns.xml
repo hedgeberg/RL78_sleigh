@@ -1,0 +1,32 @@
+<patternlist>
+  <!-- Initial list from astrelsky -->
+  <pattern>
+    <data>0x61 0xDD 0xC7</data> <!-- PUSH PSW; PUSH HL; PUSH AX -->
+    <funcstart/>
+  </pattern>
+  <patternpairs totalbits="32" postbits="24">
+    <prepatterns>
+      <data>0xff</data> <!-- invalid -->
+      <data>0xfb</data> <!-- invalid -->
+    </prepatterns>
+    <postpatterns>
+      <data>0xc3 0x31 0x17</data> <!-- PUSH BC; XCHW AX, AX; MOVW AX, HL;  -->
+      <data>0xc7 0xf6 0x16</data> <!-- PUSH AX; CLRW AX; MOVW HL, AX;-->
+      <funcstart/>
+    </postpatterns>
+  </patternpairs>
+  <patternpairs totalbits="24" postbits="16">
+    <prepatterns>
+      <data>0xd7</data> <!-- RET; -->
+    </prepatterns>
+    <postpatterns>
+      <data>0xc7 0xc1</data> <!-- PUSH HL; PUSH AX; -->
+      <data>0xc7 0x88</data> <!-- PUSH HL; MOV A,[SP+-0x1]; -->
+      <data>0xc7 0x20</data> <!-- PUSH HL; SUBW SP, #0xff; -->
+      <data>0xc7 0x41</data> <!-- PUSH HL; MOV ES, #0xff; -->
+      <data>0xc7 0x16</data> <!-- PUSH HL; MOVW HL, AX; -->
+      <data>0x61 0xdd</data> <!-- PUSH PSW; -->
+      <funcstart/>
+    </postpatterns>
+  </patternpairs>
+</patternlist>
