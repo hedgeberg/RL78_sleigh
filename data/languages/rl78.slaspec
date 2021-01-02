@@ -9,7 +9,7 @@
 #
 # Current TODO list:
 #   - Prefix instructions
-#   - Rest of the manual...
+#   - Register bank selection
 #
 
 define endian=little;
@@ -35,7 +35,7 @@ define register offset=0x50 size=2 [SP      _     _     _      ];
 define register offset=0x60 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 
 # Per AVR, they put status flags in their own registers for simplicity
-define register offset=0x70 size=1 [IE Z RBS1 AC RBS0 ISP1 ISP0 CY];
+define register offset=0x70 size=1 [IE Z PSW_RBS1 AC PSW_RBS0 ISP1 ISP0 CY];
 
 # CALL Table entries
 define ram offset=0x80 size=2 [
@@ -51,6 +51,9 @@ define ram offset=0x80 size=2 [
     CALLTB0 CALLTB2 CALLTB4 CALLTB6
     CALLTB8 CALLTBA CALLTBC CALLTBE
 ];
+
+# Bank Selection
+define register offset=0x90 size=1 [ RBS0 RBS1 RBS2 RBS3 ];
 
 # Implementation-specific special function registers, starting from 0xFFF00
 define ram offset=0xFFF00 size=1 [
@@ -133,6 +136,9 @@ define token base (8)
     mov1_sreg   = (7, 7)
     # The n'th bit to use for *1 instructions
     bit_op_n = (4, 6)
+    # Register bank selection also uses the same bits
+    # as the bitwise operators
+    rbs_op_n = (4, 5)
     movw_op = (3, 3)
     call_rp = (4, 6)
     dreg_word = (1, 2)
@@ -143,6 +149,7 @@ attach variables [ dreg_byte sreg_byte ] [X A C B E D L H];
 attach variables [ dreg_axbc ] [X A C B];
 attach variables [ dreg_word ] [AX BC DE HL];
 attach variables [ call_rp ] [ _ _ _ _ AX BC DE HL];
+attach variables [ rbs_op_n ] [ RBS0 RBS1 RBS2 RBS3 ];
 
 define token base2 (8)
     # Bits 4, 7 is set and Bit 3 is unset for CALLT instructions
@@ -379,9 +386,9 @@ macro update_psw(data) {
     # for use during decompilation
     IE     = (data & 0x80) >> 7;
     Z      = (data & 0x40) >> 6;
-    RBS1   = (data & 0x20) >> 5;
+    PSW_RBS1   = (data & 0x20) >> 5;
     AC     = (data & 0x10) >> 4;
-    RBS0   = (data & 0x08) >> 3;
+    PSW_RBS0   = (data & 0x08) >> 3;
     ISP1   = (data & 0x04) >> 2;
     ISP0   = (data & 0x02) >> 1;
     CY     = (data & 0x01);
@@ -468,6 +475,12 @@ macro inst_btclr(src, bit, target) {
     # Clear the bit post-branch, would be a NOP
     # if the bit was not set in the first place
     src = (~src & (0 << bit));
+}
+
+macro inst_sk(test) {
+    if (test) goto inst_next;
+    delayslot(1);
+    goto inst_next;
 }
 
 #########################################################################
@@ -632,12 +645,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # Root table instructions
 #
 #########################################################################
-
-:NOP is opcode=0x00 {}
-
-:HALT is opcode=0x61; opcode=0xED { halt(); }
-
-:STOP is opcode=0x61; opcode=0xFD { stop(); }
 
 #
 # Table 1/30
@@ -2513,7 +2520,7 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 #
-# Table 29
+# Table 29/30
 #
 
 # BTCLR saddr.n, $addr20
@@ -2541,3 +2548,68 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 :BTCLR AddrHL"."bit_op_n, jdisp8 is opcode=0x31 & AddrHL; op_l=0x1 & bit_op_n & mov1_sreg=1; jdisp8 {
     inst_btclr(AddrHL, bit_op_n, jdisp8);
 }
+
+#
+# Table 30/30
+#
+
+# SKC
+:SKC is opcode=0x61; opcode=0xC8 {
+    inst_sk(CY);
+}
+
+# SKNC
+:SKNC is opcode=0x61; opcode=0xD8 {
+    inst_sk(!CY);
+}
+
+# SKZ
+:SKZ is opcode=0x61; opcode=0xE8 {
+    inst_sk(Z);
+}
+
+# SKNZ
+:SKNZ is opcode=0x61; opcode=0xF8 {
+    inst_sk(!Z);
+}
+
+# SKH
+:SKH is opcode=0x61; opcode=0xE3 {
+    inst_sk(!(Z | CY));
+}
+
+# SKNH
+:SKNH is opcode=0x61; opcode=0xF3 {
+    inst_sk(Z | CY);
+}
+
+# SEL RBn
+:SEL rbs_op_n is opcode=61; op_l=0x8 & rbs_op_n & mov1_sreg=1 {
+    # Update all RBS registers to make sure only one
+    # is active at a time.
+    RBS0 = (rbs_op_n == 0);
+    RBS1 = (rbs_op_n == 1);
+    RBS2 = (rbs_op_n == 2);
+    RBS3 = (rbs_op_n == 3);
+}
+
+# NOP
+:NOP is opcode=0x00 {}
+
+# EI
+:EI is opcode=0x71; opcode=0x7A; opcode=0xFA {
+    PSW = PSW | (1 << 7);
+    update_psw(PSW);
+}
+
+# DI
+:DI is opcode=0x71; opcode=0x7B; opcode=0xFA {
+    PSW = PSW & (0 << 7);
+    update_psw(PSW);
+}
+
+# HALT
+:HALT is opcode=0x61; opcode=0xED { halt(); }
+
+# STOP
+:STOP is opcode=0x61; opcode=0xFD { stop(); }
