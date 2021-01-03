@@ -494,6 +494,12 @@ macro inst_sk(test) {
     goto inst_next;
 }
 
+macro es_extend(addr) {
+    addr = addr | ((zext(ES) & 0x0F) << 16);
+    # Clear the prefix bit for the next instruction
+    contextreg = contextreg & 0xFFFFFFFE;
+}
+
 #########################################################################
 #
 # Root table constructors
@@ -527,9 +533,7 @@ addr16: "!"loc is es_prefix=0 & uaddr16 [ loc = 0x00000 + uaddr16; ] {
 
 addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES {
     local loc:3 = uaddr16;
-    loc = loc | ((zext(ES) & 0xFF) << 16);
-    # Clear the prefix bit for the next instruction
-    contextreg = contextreg & 0xFFFFFFFE;
+    es_extend(loc);
     export *:1 loc;
 }
 
@@ -581,14 +585,20 @@ ret_addr: opcode is opcode {
 # of the register pair.
 call_reg_addr: call_rp is call_rp {
     local loc:3 = zext(call_rp);
-    loc = loc | ((zext(CS) & 0xff) << 16);
+    loc = loc | ((zext(CS) & 0x0f) << 16);
     export *:3 loc;
 }
 
 # Register Ponter tokens - [r]
 
-AddrDE: [DE] is DE {
+AddrDE: [DE] is es_prefix=0 & DE {
     local loc:3 = zext(DE);
+    export *:1 loc;
+}
+
+AddrDE: ES:[DE] is es_prefix=1 & DE & ES {
+    local loc:3 = zext(DE);
+    es_extend(loc);
     export *:1 loc;
 }
 
@@ -597,8 +607,14 @@ AddrDEW: [DE] is DE {
     export *:2 loc;
 }
 
-AddrDEOffset: [DE+uaddr8] is DE & uaddr8 {
+AddrDEOffset: [DE+uaddr8] is es_prefix=0 & DE & uaddr8 {
     local loc:3 = zext(DE) + uaddr8;
+    export *:1 loc;
+}
+
+AddrDEOffset: ES:[DE+uaddr8] is es_prefix=1 & DE & uaddr8 & ES {
+    local loc:3 = zext(DE) + uaddr8;
+    es_extend(loc);
     export *:1 loc;
 }
 
@@ -614,9 +630,7 @@ AddrHL: [HL] is HL & es_prefix=0 {
 
 AddrHL: ES:[HL] is HL & es_prefix=1 & ES {
     local loc:3 = zext(HL);
-    loc = loc | ((zext(ES) & 0xFF) << 16);
-    # Clear the prefix bit for the next instruction
-    contextreg = contextreg & 0xFFFFFFFE;
+    es_extend(loc);
     export *:1 loc;
 }
 
@@ -625,8 +639,14 @@ AddrHLW: [HL] is HL {
     export *:2 loc;
 }
 
-AddrHLOffset: [HL+uaddr8] is HL & uaddr8 {
+AddrHLOffset: [HL+uaddr8] is es_prefix=0 & HL & uaddr8 {
     local loc:3 = zext(HL) + uaddr8;
+    export *:1 loc;
+}
+
+AddrHLOffset: ES:[HL+uaddr8] is es_prefix=1 & HL & uaddr8 & ES {
+    local loc:3 = zext(HL) + uaddr8;
+    es_extend(loc);
     export *:1 loc;
 }
 
@@ -635,18 +655,36 @@ AddrHLOffsetW: [HL+uaddr8] is HL & uaddr8 {
     export *:2 loc;
 }
 
-AddrHLOffsetB: [HL+B] is HL & B {
+AddrHLOffsetB: [HL+B] is es_prefix=0 & HL & B {
     local loc:3 = zext(HL) + zext(B);
     export *:1 loc;
 }
 
-AddrHLOffsetC: [HL+C] is HL & C {
+AddrHLOffsetB: ES:[HL+B] is es_prefix=1 & HL & B & ES {
+    local loc:3 = zext(HL) + zext(B);
+    es_extend(loc);
+    export *:1 loc;
+}
+
+AddrHLOffsetC: [HL+C] is es_prefix=0 & HL & C {
     local loc:3 = zext(HL) + zext(C);
     export *:1 loc;
 }
 
-AddrWordOffsetB: uaddr16[B] is uaddr16 & B {
+AddrHLOffsetC: ES:[HL+C] is es_prefix=1 & HL & C & ES {
+    local loc:3 = zext(HL) + zext(C);
+    es_extend(loc);
+    export *:1 loc;
+}
+
+AddrWordOffsetB: uaddr16[B] is es_prefix=0 & uaddr16 & B {
     local loc:3 = uaddr16 + zext(B);
+    export *:1 loc;
+}
+
+AddrWordOffsetB: ES:uaddr16[B] is es_prefix=1 & uaddr16 & B & ES {
+    local loc:3 = uaddr16 + zext(B);
+    es_extend(loc);
     export *:1 loc;
 }
 
@@ -655,8 +693,14 @@ AddrWordOffsetBW: uaddr16[B] is uaddr16 & B {
     export *:2 loc;
 }
 
-AddrWordOffsetC: uaddr16[C] is uaddr16 & C {
+AddrWordOffsetC: uaddr16[C] is es_prefix=0 & uaddr16 & C {
     local loc:3 = uaddr16 + zext(C);
+    export *:1 loc;
+}
+
+AddrWordOffsetC: ES:uaddr16[C] is es_prefix=1 & uaddr16 & C & ES {
+    local loc:3 = uaddr16 + zext(C);
+    es_extend(loc);
     export *:1 loc;
 }
 
@@ -665,8 +709,14 @@ AddrWordOffsetCW: uaddr16[C] is uaddr16 & C {
     export *:2 loc;
 }
 
-AddrWordOffsetBC: uaddr16[BC] is uaddr16 & BC {
+AddrWordOffsetBC: uaddr16[BC] is es_prefix=0 & uaddr16 & BC {
     local loc:3 = uaddr16 + zext(BC);
+    export *:1 loc;
+}
+
+AddrWordOffsetBC: ES:uaddr16[BC] is es_prefix=1 & uaddr16 & BC & ES {
+    local loc:3 = uaddr16 + zext(BC);
+    es_extend(loc);
     export *:1 loc;
 }
 
