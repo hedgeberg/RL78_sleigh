@@ -40,6 +40,9 @@ define register offset=0x70 size=1 [IE Z PSW_RBS1 AC PSW_RBS0 ISP1 ISP0 CY];
 # For storing processor context
 define register offset=0x80 size=4 contextreg;
 
+define context contextreg
+    es_prefix=(0, 0);
+
 # Bank Selection
 define register offset=0x90 size=1 [ RBS0 RBS1 RBS2 RBS3 ];
 
@@ -108,9 +111,6 @@ define ram offset=0xFFF00 size=1 [
     SFRF0 SFRF1 SFRF2 SFRF3 SFRF4 SFRF5 SFRF6 SFRF7
     SFRF8 SFRF9 SFRFA SFRFB SFRFC SFRFD SFRFE SFRFF
 ];
-
-define context contextreg
-    es_prefix=(0, 0);
 
 #########################################################################
 #
@@ -496,8 +496,6 @@ macro inst_sk(test) {
 
 macro es_extend(addr) {
     addr = addr | ((zext(ES) & 0x0F) << 16);
-    # Clear the prefix bit for the next instruction
-    contextreg = contextreg & 0xFFFFFFFE;
 }
 
 #########################################################################
@@ -531,7 +529,7 @@ addr16: "!"loc is es_prefix=0 & uaddr16 [ loc = 0x00000 + uaddr16; ] {
     export *:1 loc;
 }
 
-addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES {
+addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES [ es_prefix=0; globalset(inst_next, es_prefix); ] {
     local loc:3 = uaddr16;
     es_extend(loc);
     export *:1 loc;
@@ -628,7 +626,7 @@ AddrHL: [HL] is HL & es_prefix=0 {
     export *:1 loc;
 }
 
-AddrHL: ES:[HL] is HL & es_prefix=1 & ES {
+AddrHL: ES:[HL] is HL & es_prefix=1 & ES [ es_prefix=0; globalset(inst_next, es_prefix); ] {
     local loc:3 = zext(HL);
     es_extend(loc);
     export *:1 loc;
@@ -2704,7 +2702,4 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 :STOP is opcode=0x61; opcode=0xFD { stop(); }
 
 # PREFIX
-: is opcode=0x11 {
-    # Set the prefix bit
-    contextreg = 1;
-}
+: is opcode=0x11 [ es_prefix=1; globalset(inst_next, es_prefix); ] {}
