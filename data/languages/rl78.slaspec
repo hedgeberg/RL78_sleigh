@@ -2654,7 +2654,7 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 :STOP is opcode=0x61; opcode=0xFD { stop(); }
 
 # PREFIX
-:PREFIX is opcode=0x11 {
+: is opcode=0x11 {
     # Set the prefix bit
     contextreg = 1;
 }
