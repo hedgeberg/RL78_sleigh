@@ -37,6 +37,12 @@ define register offset=0x60 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 # Per AVR, they put status flags in their own registers for simplicity
 define register offset=0x70 size=1 [IE Z PSW_RBS1 AC PSW_RBS0 ISP1 ISP0 CY];
 
+# For storing processor context
+define register offset=0x80 size=4 contextreg;
+
+# Bank Selection
+define register offset=0x90 size=1 [ RBS0 RBS1 RBS2 RBS3 ];
+
 # CALL Table entries
 define ram offset=0x80 size=2 [
     CALLT80 CALLT82 CALLT84 CALLT86
@@ -51,9 +57,6 @@ define ram offset=0x80 size=2 [
     CALLTB0 CALLTB2 CALLTB4 CALLTB6
     CALLTB8 CALLTBA CALLTBC CALLTBE
 ];
-
-# Bank Selection
-define register offset=0x90 size=1 [ RBS0 RBS1 RBS2 RBS3 ];
 
 # Implementation-specific special function registers, starting from 0xFFF00
 define ram offset=0xFFF00 size=1 [
@@ -105,6 +108,9 @@ define ram offset=0xFFF00 size=1 [
     SFRF0 SFRF1 SFRF2 SFRF3 SFRF4 SFRF5 SFRF6 SFRF7
     SFRF8 SFRF9 SFRFA SFRFB SFRFC SFRFD SFRFE SFRFF
 ];
+
+define context contextreg
+    es_prefix=(0, 0);
 
 #########################################################################
 #
@@ -515,7 +521,15 @@ saddrp: uaddr8 is uaddr8 {
     export *:2 loc;
 }
 
-addr16: "!"loc is uaddr16 [ loc = 0x00000 + uaddr16; ] {
+addr16: "!"loc is es_prefix=0 & uaddr16 [ loc = 0x00000 + uaddr16; ] {
+    export *:1 loc;
+}
+
+addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES {
+    local loc:3 = uaddr16;
+    loc = loc | ((zext(ES) & 0xFF) << 16);
+    # Clear the prefix bit for the next instruction
+    contextreg = contextreg & 0xFFFFFFFE;
     export *:1 loc;
 }
 
@@ -552,6 +566,25 @@ jdisp16: loc is saddr16 [ loc = inst_next + saddr16; ] {
     export *:3 loc;
 }
 
+brk_addr: loc is opcode [ loc = 0x007F7E; ] {
+    export *:3 loc;
+}
+
+ret_addr: opcode is opcode {
+    local tmp:3 = *[stackarea]:3 SP;
+    SP = SP + 4;
+    export *:3 tmp;
+}
+
+# From page 21 of the RL78 ISA manual, CALL rp uses register
+# indirect addressing that uses CS along with the contents
+# of the register pair.
+call_reg_addr: call_rp is call_rp {
+    local loc:3 = zext(call_rp);
+    loc = loc | ((zext(CS) & 0xff) << 16);
+    export *:3 loc;
+}
+
 # Register Ponter tokens - [r]
 
 AddrDE: [DE] is DE {
@@ -574,8 +607,16 @@ AddrDEOffsetW: [DE+uaddr8] is DE & uaddr8 {
     export *:2 loc;
 }
 
-AddrHL: [HL] is HL {
+AddrHL: [HL] is HL & es_prefix=0 {
     local loc:3 = zext(HL);
+    export *:1 loc;
+}
+
+AddrHL: ES:[HL] is HL & es_prefix=1 & ES {
+    local loc:3 = zext(HL);
+    loc = loc | ((zext(ES) & 0xFF) << 16);
+    # Clear the prefix bit for the next instruction
+    contextreg = contextreg & 0xFFFFFFFE;
     export *:1 loc;
 }
 
@@ -2240,36 +2281,30 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 #
 
 # CALL rp
-:CALL call_rp (PC) is opcode=0x61 & PC; call_rp & op_l=0xA & mov1_sreg=1 {
+:CALL call_reg_addr is opcode=0x61; call_reg_addr & op_l=0xA & mov1_sreg=1 {
     local ret_pc:3 = inst_next;
     local cs_ext:3 = (zext(CS) & 0xFF) << 16;
-    # From page 21 of the RL78 ISA manual, CALL rp uses register
-    # indirect addressing that uses CS along with the contents
-    # of the register pair.
-    local call_addr:3 = cs_ext | zext(call_rp);
 
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
     *[stackarea]:3 SP = ret_pc;
 
-    PC = call_addr;
-    call PC;
+    call call_reg_addr;
 }
 
 # CALL $!addr20
-:CALL jdisp16 (PC) is opcode=0xFE & PC; jdisp16 {
+:CALL jdisp16 is opcode=0xFE; jdisp16 {
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
     *[stackarea]:3 SP = inst_next;
 
-    PC = jdisp16;
     call jdisp16;
 }
 
 # CALL !addr16
-:CALL jaddr16 (PC) is opcode=0xFD & PC; jaddr16 {
+:CALL jaddr16 is opcode=0xFD; jaddr16 {
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
@@ -2279,30 +2314,27 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # CALL !!addr20
-:CALL addr20 (PC) is opcode=0xFC & PC; addr20 {
+:CALL addr20 is opcode=0xFC; addr20 {
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
     *[stackarea]:3 SP = inst_next;
 
-    PC = addr20;
-    call PC;
+    call addr20;
 }
 
 # CALLT [CALLT]
-:CALLT CALLT_Entry (PC) is opcode=0x61 & PC; CALLT_Entry & op2_callt_hi & op2_callt_low & op2_b7=1 & op2_b34=0x2 {
+:CALLT CALLT_Entry is opcode=0x61; CALLT_Entry & op2_callt_hi & op2_callt_low & op2_b7=1 & op2_b34=0x2 {
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
     *[stackarea]:3 SP = inst_next;
 
-    PC = zext(CALLT_Entry);
-    PC = *PC;
-    call PC;
+    call CALLT_Entry;
 } 
 
 # BRK
-:BRK (PC) is opcode=0x61 & PC; opcode=0xCC {
+:BRK is opcode=0x61; opcode=0xCC & brk_addr {
     SP = SP - 1;
     *[stackarea]:1 SP = PSW;
     SP = SP - 3;
@@ -2311,16 +2343,13 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     IE = 0;
     PSW = PSW & 0x7f;
     update_psw(PSW);
-    PC = 0x007F7E;
-    call PC;
+
+    call brk_addr;
 }
 
 # RET
-:RET (PC) is opcode=0xD7 & PC {
-    PC = *[stackarea]:3 SP;
-    SP = SP + 4;
-
-    return [PC];
+:RET is opcode=0xD7 & ret_addr {
+    return [ret_addr];
 }
 
 # RETI
@@ -2623,3 +2652,9 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 
 # STOP
 :STOP is opcode=0x61; opcode=0xFD { stop(); }
+
+# PREFIX
+:PREFIX is opcode=0x11 {
+    # Set the prefix bit
+    contextreg = 1;
+}
