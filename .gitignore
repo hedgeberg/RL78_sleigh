@@ -2,3 +2,4 @@
 test_bins/*
 !test_bins/mcu-firm.bin
 dist/*
+.gradle
