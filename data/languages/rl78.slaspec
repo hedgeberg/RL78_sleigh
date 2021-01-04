@@ -561,15 +561,15 @@ sfrpw: sfr_byte is sfr_byte {
     export *:2 tmp;
 }
 
-jdisp8: loc is saddr8 [ loc = inst_next + saddr8; ] {
+jdisp8: "$"loc is saddr8 [ loc = inst_next + saddr8; ] {
     export *:3 loc;
 }
 
-jaddr16: loc is uaddr16 [ loc = 0x0000 | uaddr16; ] {
-    export *:1 loc;
+jaddr16: "!"loc is uaddr16 [ loc = 0x0000 | uaddr16; ] {
+    export *:3 loc;
 }
 
-jdisp16: loc is saddr16 [ loc = inst_next + saddr16; ] {
+jdisp16: "$!"loc is saddr16 [ loc = inst_next + saddr16; ] {
     export *:3 loc;
 }
 
@@ -2551,8 +2551,8 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # BR !addr16
-:BR addr16 is opcode=0xED; addr16 {
-    branch(zext(addr16));
+:BR jaddr16 is opcode=0xED; jaddr16 {
+    branch(jaddr16);
 }
 
 # BR !!addr20
