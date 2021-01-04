@@ -520,7 +520,7 @@ saddr: loc is uaddr8 [ loc = 0xFFE00 + uaddr8; ] {
 }
 
 saddrp: uaddr8 is uaddr8 {
-    local loc:3 = (0xFFFE00 + uaddr8) & 0xFFFFFE;
+    local loc:3 = (0xFFE00 + uaddr8) & 0x0FFFFE;
     export *:2 loc;
 }
 
