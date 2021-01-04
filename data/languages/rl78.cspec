@@ -8,7 +8,7 @@
     <machine_alignment value="1" />
     <default_alignment value="1" />
     <default_pointer_alignment value="1" />
-    <pointer_size value="1" />
+    <pointer_size value="2" />
   </data_organization>
   <global>
     <range space="ram"/>
