@@ -595,7 +595,7 @@ call_reg_addr: call_rp is call_rp {
 # Register Ponter tokens - [r]
 
 AddrDE: [DE] is es_prefix=0 & DE {
-    local loc:3 = zext(DE);
+    local loc:3 = 0xF0000 | zext(DE);
     export *:1 loc;
 }
 
@@ -606,7 +606,7 @@ AddrDE: ES:[DE] is es_prefix=1 & DE & ES [ es_prefix=0; globalset(inst_start, es
 }
 
 AddrDEW: [DE] is es_prefix=0 & DE {
-    local loc:3 = zext(DE);
+    local loc:3 = 0xF0000 | zext(DE);
     export *:2 loc;
 }
 
@@ -617,7 +617,7 @@ AddrDEW: ES:[DE] is es_prefix=1 & DE & ES [ es_prefix=0; globalset(inst_start, e
 }
 
 AddrDEOffset: [DE+uaddr8] is es_prefix=0 & DE & uaddr8 {
-    local loc:3 = zext(DE) + uaddr8;
+    local loc:3 = 0xF0000 | (zext(DE) + uaddr8);
     export *:1 loc;
 }
 
@@ -628,7 +628,7 @@ AddrDEOffset: ES:[DE+uaddr8] is es_prefix=1 & DE & uaddr8 & ES [ es_prefix=0; gl
 }
 
 AddrDEOffsetW: [DE+uaddr8] is es_prefix=0 & DE & uaddr8 {
-    local loc:3 = zext(DE) + uaddr8;
+    local loc:3 = 0xF0000 | (zext(DE) + uaddr8);
     export *:2 loc;
 }
 
@@ -639,7 +639,7 @@ AddrDEOffsetW: ES:[DE+uaddr8] is es_prefix=1 & DE & uaddr8 & ES [ es_prefix=0; g
 }
 
 AddrHL: [HL] is HL & es_prefix=0 {
-    local loc:3 = zext(HL);
+    local loc:3 = 0xF0000 | zext(HL);
     export *:1 loc;
 }
 
@@ -650,7 +650,7 @@ AddrHL: ES:[HL] is HL & es_prefix=1 & ES [ es_prefix=0; globalset(inst_start, es
 }
 
 AddrHLW: [HL] is es_prefix=0 & HL {
-    local loc:3 = zext(HL);
+    local loc:3 = 0xF0000 | zext(HL);
     export *:2 loc;
 }
 
@@ -661,7 +661,7 @@ AddrHLW: ES:[HL] is es_prefix=1 & HL & ES [ es_prefix=0; globalset(inst_start, e
 }
 
 AddrHLOffset: [HL+uaddr8] is es_prefix=0 & HL & uaddr8 {
-    local loc:3 = zext(HL) + uaddr8;
+    local loc:3 = 0xF0000 | (zext(HL) + uaddr8);
     export *:1 loc;
 }
 
@@ -672,7 +672,7 @@ AddrHLOffset: ES:[HL+uaddr8] is es_prefix=1 & HL & uaddr8 & ES [ es_prefix=0; gl
 }
 
 AddrHLOffsetW: [HL+uaddr8] is es_prefix=0 & HL & uaddr8 {
-    local loc:3 = zext(HL) + uaddr8;
+    local loc:3 = 0xF0000 | (zext(HL) + uaddr8);
     export *:2 loc;
 }
 
@@ -683,7 +683,7 @@ AddrHLOffsetW: ES:[HL+uaddr8] is es_prefix=1 & HL & uaddr8 & ES [ es_prefix=0; g
 }
 
 AddrHLOffsetB: [HL+B] is es_prefix=0 & HL & B {
-    local loc:3 = zext(HL) + zext(B);
+    local loc:3 = 0xF0000 | (zext(HL) + zext(B));
     export *:1 loc;
 }
 
@@ -694,7 +694,7 @@ AddrHLOffsetB: ES:[HL+B] is es_prefix=1 & HL & B & ES [ es_prefix=0; globalset(i
 }
 
 AddrHLOffsetC: [HL+C] is es_prefix=0 & HL & C {
-    local loc:3 = zext(HL) + zext(C);
+    local loc:3 = 0xF0000 | (zext(HL) + zext(C));
     export *:1 loc;
 }
 
@@ -705,7 +705,7 @@ AddrHLOffsetC: ES:[HL+C] is es_prefix=1 & HL & C & ES [ es_prefix=0; globalset(i
 }
 
 AddrWordOffsetB: uaddr16[B] is es_prefix=0 & uaddr16 & B {
-    local loc:3 = uaddr16 + zext(B);
+    local loc:3 = 0xF0000 | (uaddr16 + zext(B));
     export *:1 loc;
 }
 
@@ -716,7 +716,7 @@ AddrWordOffsetB: ES:uaddr16[B] is es_prefix=1 & uaddr16 & B & ES [ es_prefix=0; 
 }
 
 AddrWordOffsetBW: uaddr16[B] is es_prefix=0 & uaddr16 & B {
-    local loc:3 = (uaddr16 + zext(B)) & 0xFFFFFE;
+    local loc:3 = (0xF0000 | (uaddr16 + zext(B))) & 0x0FFFFE;
     export *:2 loc;
 }
 
@@ -727,7 +727,7 @@ AddrWordOffsetBW: ES:uaddr16[B] is es_prefix=1 & uaddr16 & B & ES [ es_prefix=0;
 }
 
 AddrWordOffsetC: uaddr16[C] is es_prefix=0 & uaddr16 & C {
-    local loc:3 = uaddr16 + zext(C);
+    local loc:3 = 0xF0000 | (uaddr16 + zext(C));
     export *:1 loc;
 }
 
@@ -738,7 +738,7 @@ AddrWordOffsetC: ES:uaddr16[C] is es_prefix=1 & uaddr16 & C & ES [ es_prefix=0; 
 }
 
 AddrWordOffsetCW: uaddr16[C] is es_prefix=0 & uaddr16 & C {
-    local loc:3 = (uaddr16 + zext(C)) & 0xFFFFFE;
+    local loc:3 = (0xF0000 | (uaddr16 + zext(C))) & 0xFFFFE;
     export *:2 loc;
 }
 
@@ -749,7 +749,7 @@ AddrWordOffsetCW: ES:uaddr16[C] is es_prefix=1 & uaddr16 & C & ES [ es_prefix=0;
 }
 
 AddrWordOffsetBC: uaddr16[BC] is es_prefix=0 & uaddr16 & BC {
-    local loc:3 = uaddr16 + zext(BC);
+    local loc:3 = 0xF0000 | (uaddr16 + zext(BC));
     export *:1 loc;
 }
 
@@ -760,7 +760,7 @@ AddrWordOffsetBC: ES:uaddr16[BC] is es_prefix=1 & uaddr16 & BC & ES [ es_prefix=
 }
 
 AddrWordOffsetBCW: uaddr16[BC] is es_prefix=0 & uaddr16 & BC {
-    local loc:3 = (uaddr16 + zext(BC)) & 0xFFFFFE;
+    local loc:3 = (0xF0000 | (uaddr16 + zext(BC))) & 0xFFFFFE;
     export *:2 loc;
 }
 
@@ -771,12 +771,12 @@ AddrWordOffsetBCW: ES:uaddr16[BC] is es_prefix=1 & uaddr16 & BC & ES [ es_prefix
 }
 
 AddrSPOffset: [SP+uaddr8] is SP & uaddr8 {
-    local loc:3 = zext(SP) + uaddr8;
+    local loc:3 = 0xF0000 | (zext(SP) + uaddr8);
     export *:1 loc;
 }
 
 AddrSPOffsetW: [SP+uaddr8] is SP & uaddr8 {
-    local loc:3 = zext(SP) + uaddr8;
+    local loc:3 = 0xF0000 | (zext(SP) + uaddr8);
     export *:2 loc;
 }
 
