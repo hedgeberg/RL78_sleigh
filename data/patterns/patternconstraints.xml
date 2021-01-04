@@ -1,0 +1,5 @@
+<patternconstraints>
+  <language id="rl78:LE:16:default">
+    <patternfile>rl78_patterns.xml</patternfile>
+  </language>
+</patternconstraints>
