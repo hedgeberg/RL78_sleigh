@@ -524,12 +524,12 @@ saddrp: uaddr8 is uaddr8 {
     export *:2 loc;
 }
 
-addr16: "!"loc is es_prefix=0 & uaddr16 [ loc = 0x00000 + uaddr16; ] {
+addr16: "!"loc is es_prefix=0 & uaddr16 [ loc = 0xF0000 + uaddr16; ] {
     export *:1 loc;
 }
 
 addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES [ es_prefix=0; globalset(inst_start, es_prefix); ] {
-    local loc:3 = uaddr16;
+    local loc:3 = 0xF0000 + uaddr16;
     es_extend(loc);
     export *:1 loc;
 }
