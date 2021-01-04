@@ -529,7 +529,7 @@ addr16: "!"loc is es_prefix=0 & uaddr16 [ loc = 0xF0000 + uaddr16; ] {
 }
 
 addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES [ es_prefix=0; globalset(inst_start, es_prefix); ] {
-    local loc:3 = 0xF0000 + uaddr16;
+    local loc:3 = uaddr16;
     es_extend(loc);
     export *:1 loc;
 }
@@ -540,7 +540,7 @@ addr16w: "!"uaddr16 is es_prefix=0 & uaddr16 {
 }
 
 addr16w: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES [ es_prefix=0; globalset(inst_start, es_prefix); ] {
-    local tmp:3 = (0xF0000 + uaddr16) & 0xFFFFFE;
+    local tmp:3 = uaddr16;
     es_extend(tmp);
     export *:2 tmp;
 }
