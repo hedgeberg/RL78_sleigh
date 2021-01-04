@@ -42,8 +42,11 @@ Credits
 -------
 
 Thanks to [hedgeberg](https://github.com/hedgeberg), [aerosoul94](https://github.com/aerosoul94) for the initial sleigh implementation.
-Thanks to [astrelsky](https://github.com/astrelsky) for the pull request of function match patterns
-Thanks to [zecoxao](https://github.com/zecoxao) for the kick to get this moving
+
+Thanks to [astrelsky](https://github.com/astrelsky) for the pull request of function match patterns.
+
+Thanks to [zecoxao](https://github.com/zecoxao) for the kick to get this moving.
+
 The rest of you that know who you are and love to explore the RL78 ISA <3
 
 Thanks to [hthh](https://github.com/hthh/), [thog](https://github.com/thog), and [roblabla](https://github.com/roblabla) for their work on [Ghidra_Falcon](https://github.com/Thog/ghidra_falcon), which served as the base workflow for this project (i.e. I stole their repo and build system and just edited a couple files with the exception of the rl78 defintion files). Definitely check through their repo, their debugging workflow that they highlighted there is how I've been debugging this. 
