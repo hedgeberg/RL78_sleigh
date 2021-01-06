@@ -162,9 +162,9 @@ attach variables [ call_rp ] [ _ _ _ _ AX BC DE HL];
 attach variables [ rbs_op_n ] [ RBS0 RBS1 RBS2 RBS3 ];
 
 define token base2 (8)
-    # Bits 4, 7 is set and Bit 3 is unset for CALLT instructions
+    # Bits 2, 7 is set and Bit 3 is unset for CALLT instructions
     op2_b7       = (7, 7)
-    op2_b34      = (3, 4)
+    op2_b23      = (2, 3)
     op2_callt_low = (4, 6)
     op2_callt_hi  = (0, 1)
     # NOTE: Many arithmetic instructions that act upon registers
@@ -2418,7 +2418,7 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 }
 
 # CALLT [CALLT]
-:CALLT CALLT_Entry is opcode=0x61; CALLT_Entry & op2_callt_hi & op2_callt_low & op2_b7=1 & op2_b34=0x2 {
+:CALLT CALLT_Entry is opcode=0x61; CALLT_Entry & op2_callt_hi & op2_callt_low & op2_b7=1 & op2_b23=0x1 {
     SP = SP - 1;
     *[stackarea]:1 SP = 0x00:1;
     SP = SP - 3;
