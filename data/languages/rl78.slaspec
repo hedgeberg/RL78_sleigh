@@ -31,8 +31,7 @@ define register offset=0x18 size=2 [AX    BC    DE    HL   ];  #16-bit-mode bank
 # Special purpose registers
 define register offset=0x40 size=3 [PC];
 define register offset=0x50 size=2 [SP      _     _     _      ];
-define register offset=0x50 size=1 [SPL SPH _  _  _  _  _  _   ];
-define register offset=0x60 size=1 [PSW _ CS ES PMC MEM];
+define register offset=0x50 size=1 [SPL SPH PSW _ CS ES PMC MEM];
 
 # Per AVR, they put status flags in their own registers for simplicity
 define register offset=0x70 size=1 [IE Z PSW_RBS1 AC PSW_RBS0 ISP1 ISP0 CY];
@@ -183,7 +182,10 @@ define token data8 (8)
     data        = (0, 7)
     uaddr8      = (0, 7)
     saddr8      = (0, 7) signed
-    sfr_byte    = (0, 7);
+    sfr_byte    = (0, 7)
+    fixed_sfr_offset = (3, 7)
+    fixed_sfr   = (0, 2)
+    fixed_sfr_w   = (0, 2);
 attach variables [ sfr_byte ] [
     SFR00 SFR01 SFR02 SFR03 SFR04 SFR05 SFR06 SFR07
     SFR08 SFR09 SFR0A SFR0B SFR0C SFR0D SFR0E SFR0F
@@ -233,11 +235,18 @@ attach variables [ sfr_byte ] [
     SFRF0 SFRF1 SFRF2 SFRF3 SFRF4 SFRF5 SFRF6 SFRF7
     SFRF8 SFRF9 SFRFA SFRFB SFRFC SFRFD SFRFE SFRFF
 ];
+attach variables [ fixed_sfr ] [ SPL SPH PSW _ CS ES PMC MEM ];
+attach variables [ fixed_sfr_w ] [ SP _ _ _ _ _ _ _ ];
 
 define token data16 (16)
     dataw = (0, 15)
     uaddr16 = (0, 15)
-    saddr16 = (0, 15) signed;
+    saddr16 = (0, 15) signed
+    a16_sfr_offset = (3, 15)
+    a16_sfr_reg = (0, 2)
+    a16w_sfr_reg = (0, 2);
+attach variables [ a16_sfr_reg ] [ SPL SPH PSW _ CS ES PMC MEM ];
+attach variables [ a16w_sfr_reg ] [ SP _ _ _ _ _ _ _ ];
 
 define token data24 (24)
     uaddr20 = (0, 19);
@@ -529,6 +538,10 @@ addr16: "!"loc is es_prefix=0 & uaddr16 [ loc = 0xF0000 + uaddr16; ] {
     export *:1 loc;
 }
 
+addr16: a16_sfr_reg is es_prefix=0 & a16_sfr_reg & a16_sfr_offset=0x1fff {
+    export a16_sfr_reg;
+}
+
 addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES [ es_prefix=0; globalset(inst_start, es_prefix); ] {
     local loc:3 = uaddr16;
     es_extend(loc);
@@ -538,6 +551,10 @@ addr16: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES [ es_prefix=0; globalset(ins
 addr16w: "!"uaddr16 is es_prefix=0 & uaddr16 {
     local tmp:3 = (0xF0000 + uaddr16) & 0xFFFFFE;
     export *:2 tmp;
+}
+
+addr16w: a16w_sfr_reg is es_prefix=0 & a16w_sfr_reg & a16_sfr_offset=0x1fff {
+    export a16w_sfr_reg;
 }
 
 addr16w: ES:"!"uaddr16 is es_prefix=1 & uaddr16 & ES [ es_prefix=0; globalset(inst_start, es_prefix); ] {
@@ -554,12 +571,20 @@ sfrp: loc is sfr_byte [ loc = 0xFFF00 + sfr_byte; ] {
     export *:1 loc;
 }
 
+sfrp: fixed_sfr is fixed_sfr & fixed_sfr_offset=0x1f {
+    export fixed_sfr;
+}
+
 # TODO: Doesn't mask off on even addresses without complicating the
 # decompilation. Tried to calculate using the below:
 # local tmp:3 = (0xFFF00 + zext(sfr_byte)) & 0xFFFFFE;
 sfrpw: sfr_byte is sfr_byte {
     local tmp:3 = zext(sfr_byte);
     export *:2 tmp;
+}
+
+sfrpw: fixed_sfr_w is fixed_sfr_w & fixed_sfr_offset=0x1f {
+    export fixed_sfr_w;
 }
 
 jdisp8: "$"loc is saddr8 [ loc = inst_next + saddr8; ] {
@@ -826,16 +851,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     addr16 = data;
 }
 
-# MOV SPL, #byte
-:MOV SPL, "#"data is opcode=0xCF; uaddr16=0xFFF8 & SPL; data {
-    SPL = data;
-}
-
-# MOV SPH, #byte
-:MOV SPH, "#"data is opcode=0xCF; uaddr16=0xFFF9 & SPH; data {
-    SPH = data;
-}
-
 # MOV A, saddr
 :MOV A, saddr is opcode=0x8D & A; saddr {
     A = saddr;
@@ -861,29 +876,9 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     A = addr16;
 }
 
-# MOV A, SPL
-:MOV A, SPL is opcode=0x8F & A; uaddr16=0xFFF8 & SPL {
-    A = SPL;
-}
-
-# MOV A, SPH
-:MOV A, SPH is opcode=0x8F & A; uaddr16=0xFFF9 & SPH {
-    A = SPH;
-}
-
 # MOV !addr16, A
 :MOV addr16, A is opcode=0x9F & A; addr16 {
     addr16 = A;
-}
-
-# MOV SPL, A
-:MOV SPL, A is opcode=0x9F & A; uaddr16=0xFFF8 & SPL {
-    SPL = A;
-}
-
-# MOV SPH, A
-:MOV SPH, A is opcode=0x9F & A; uaddr16=0xFFF9 & SPH {
-    SPH = A;
 }
 
 # MOV PSW, #byte
@@ -1080,16 +1075,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     B = addr16;
 }
 
-# MOV B, SPL
-:MOV B, SPL is opcode=0xE9 & B; uaddr16=0xFFF8 & SPL {
-    B = SPL;
-}
-
-# MOV B, SPH
-:MOV B, SPH is opcode=0xE9 & B; uaddr16=0xFFF9 & SPH {
-    B = SPH;
-}
-
 # MOV C, saddr
 :MOV C, saddr is opcode=0xF8 & C; saddr {
     C = saddr;
@@ -1100,16 +1085,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     C = addr16;
 }
 
-# MOV C, SPL
-:MOV C, SPL is opcode=0xF9 & C; uaddr16=0xFFF8 & SPL {
-    C = SPL;
-}
-
-# MOV C, SPH
-:MOV C, SPH is opcode=0xF9 & C; uaddr16=0xFFF9 & SPH {
-    C = SPH;
-}
-
 # MOV X, saddr
 :MOV X, saddr is opcode=0xD8 & X; saddr {
     X = saddr;
@@ -1118,16 +1093,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # MOV X, !addr16
 :MOV X, addr16 is opcode=0xD9 & X; addr16 {
     X = addr16;
-}
-
-# MOV X, SPL
-:MOV X, SPL is opcode=0xD9 & X; uaddr16=0xFFF8 & SPL {
-    X = SPL;
-}
-
-# MOV X, SPH
-:MOV X, SPH is opcode=0xD9 & X; uaddr16=0xFFF9 & SPH {
-    X = SPH;
 }
 
 #
@@ -1157,16 +1122,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # XCH A, !addr16
 :XCH A, addr16 is opcode=0x61 & A; opcode=0xAA; addr16 {
     inst_xch(A, addr16);
-}
-
-# XCH A, SPL
-:XCH A, SPL is opcode=0x61 & A; opcode=0xAA; uaddr16=0xFFF8 & SPL {
-    inst_xch(A, SPL);
-}
-
-# XCH A, SPH
-:XCH A, SPH is opcode=0x61 & A; opcode=0xAA; uaddr16=0xFFF9 & SPH {
-    inst_xch(A, SPH);
 }
 
 # XCH A, [DE]
@@ -1218,16 +1173,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     addr16 = 1;
 }
 
-# ONEB SPL
-:ONEB SPL is opcode=0xE5; uaddr16=0xFFF8 & SPL {
-    SPL = 1;
-}
-
-# ONEB SPH
-:ONEB SPH is opcode=0xE5; uaddr16=0xFFF9 & SPH {
-    SPH = 1;
-}
-
 # CLRB r
 :CLRB dreg_axbc is op_h=0xF & dreg_axbc & clrb_unused=0  {
     dreg_axbc = 0;
@@ -1241,16 +1186,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # CLRB !addr16
 :CLRB addr16 is opcode=0xF5; addr16 {
     addr16 = 0;
-}
-
-# CLRB SPL
-:CLRB SPL is opcode=0xF5; uaddr16=0xFFF8 & SPL {
-    SPL = 0;
-}
-
-# CLRB SPH
-:CLRB SPH is opcode=0xF5; uaddr16=0xFFF9 & SPH {
-    SPH = 0;
 }
 
 # MOVS [HL+byte], X
@@ -1308,19 +1243,9 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     AX = addr16w;
 }
 
-# MOVW AX, SP
-:MOVW AX, SP is opcode=0xAF & AX; uaddr16=0xFFF8 & SP {
-    AX = SP;
-}
-
 # MOVW !addr16, AX
 :MOVW addr16w, AX is opcode=0xBF & AX; addr16w {
     addr16w = AX;
-}
-
-# MOVW SP, AX
-:MOVW SP, AX is opcode=0xBF & AX; uaddr16=0xFFF8 & SP {
-    SP = AX;
 }
 
 # MOVW AX, [DE]
@@ -1412,11 +1337,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     BC = addr16w;
 }
 
-# MOVW BC, SP
-:MOVW BC, SP is opcode=0xDB & BC; uaddr16=0xFFF8 & SP {
-    BC = SP;
-}
-
 # MOVW DE, saddrp
 :MOVW DE, saddrp is opcode=0xEA & DE; saddrp {
     DE = saddrp;
@@ -1427,11 +1347,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     DE = addr16w;
 }
 
-# MOVW DE, SP
-:MOVW DE, SP is opcode=0xEB & DE; uaddr16=0xFFF8 & SP {
-    DE = SP;
-}
-
 # MOVW HL, saddrp
 :MOVW HL, saddrp is opcode=0xFA & HL; saddrp {
     HL = saddrp;
@@ -1440,11 +1355,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # MOVW HL, !addr16
 :MOVW HL, addr16w is opcode=0xFB & HL; addr16w {
     HL = addr16w;
-}
-
-# MOVW HL, SP
-:MOVW HL, SP is opcode=0xFB & HL; uaddr16=0xFFF8 & SP {
-    HL = SP;
 }
 
 # XCHW AX, rp
@@ -1508,16 +1418,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_add(A, addr16);
 }
 
-# ADD A, SPL
-:ADD A, SPL is opcode=0x0F & A; uaddr16=0xFFF8 & SPL {
-    inst_add(A, SPL);
-}
-
-# ADD A, SPH
-:ADD A, SPH is opcode=0x0F & A; uaddr16=0xFFF9 & SPH {
-    inst_add(A, SPH);
-}
-
 # ADD A, [HL]
 :ADD A, AddrHL is opcode=0x0D & A & AddrHL {
     inst_add(A, AddrHL);
@@ -1572,16 +1472,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_addc(A, addr16);
 }
 
-# ADDC A, SPL
-:ADDC A, SPL is opcode=0x1F & A; uaddr16=0xFFF8 & SPL {
-    inst_addc(A, SPL);
-}
-
-# ADDC A, SPH
-:ADDC A, SPH is opcode=0x1F & A; uaddr16=0xFFF9 & SPH {
-    inst_addc(A, SPH);
-}
-
 # ADDC A, [HL]
 :ADDC A, AddrHL is opcode=0x1D & A & AddrHL {
     inst_addc(A, AddrHL);
@@ -1630,16 +1520,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # SUB A, !addr16
 :SUB A, addr16 is opcode=0x2F & A; addr16 {
     inst_sub(A, addr16);
-}
-
-# SUB A, SPL
-:SUB A, SPL is opcode=0x2F & A; uaddr16=0xFFF8 & SPL {
-    inst_sub(A, SPL);
-}
-
-# SUB A, SPH
-:SUB A, SPH is opcode=0x2F & A; uaddr16=0xFFF9 & SPH {
-    inst_sub(A, SPH);
 }
 
 # SUB A, [HL]
@@ -1696,16 +1576,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_subc(A, addr16);
 }
 
-# SUBC A, SPL
-:SUBC A, SPL is opcode=0x3F & A; uaddr16=0xFFF8 & SPL {
-    inst_subc(A, SPL);
-}
-
-# SUBC A, SPH
-:SUBC A, SPH is opcode=0x3F & A; uaddr16=0xFFF9 & SPH {
-    inst_subc(A, SPH);
-}
-
 # SUBC A, [HL]
 :SUBC A, AddrHL is opcode=0x3D & A & AddrHL {
     inst_subc(A, AddrHL);
@@ -1760,16 +1630,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_and(A, addr16);
 }
 
-# AND A, SPL
-:AND A, SPL is opcode=0x5F & A; uaddr16=0xFFF8 & SPL {
-    inst_and(A, SPL);
-}
-
-# AND A, SPH
-:AND A, SPH is opcode=0x5F & A; uaddr16=0xFFF9 & SPH {
-    inst_and(A, SPH);
-}
-
 # AND A, [HL]
 :AND A, AddrHL is opcode=0x5D & A & AddrHL {
     inst_and(A, AddrHL);
@@ -1818,16 +1678,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # OR A, !addr16
 :OR A, addr16 is opcode=0x6F & A; addr16 {
     inst_or(A, addr16);
-}
-
-# OR A, SPL
-:OR A, SPL is opcode=0x6F & A; uaddr16=0xFFF8 & SPL {
-    inst_or(A, SPL);
-}
-
-# OR A, SPH
-:OR A, SPH is opcode=0x6F & A; uaddr16=0xFFF9 & SPH {
-    inst_or(A, SPH);
 }
 
 # OR A, [HL]
@@ -1882,16 +1732,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # XOR A, !addr16
 :XOR A, addr16 is opcode=0x7f & A; addr16 {
     inst_xor(A, addr16);
-}
-
-# XOR A, SPL
-:XOR A, SPL is opcode=0x7f & A; uaddr16=0xFFF8 & SPL {
-    inst_xor(A, SPL);
-}
-
-# XOR A, SPH
-:XOR A, SPH is opcode=0x7f & A; uaddr16=0xFFF9 & SPH {
-    inst_xor(A, SPH);
 }
 
 # XOR A, [HL]
@@ -1952,16 +1792,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_cmp(A, addr16);
 }
 
-# CMP A, SPL
-:CMP A, SPL is opcode=0x4F & A; uaddr16=0xFFF8 & SPL {
-    inst_cmp(A, SPL);
-}
-
-# CMP A, SPH
-:CMP A, SPH is opcode=0x4F & A; uaddr16=0xFFF9 & SPH {
-    inst_cmp(A, SPH);
-}
-
 # CMP A, [HL]
 :CMP A, AddrHL is opcode=0x4D & A & AddrHL {
     inst_cmp(A, AddrHL);
@@ -1987,16 +1817,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_cmp(addr16, u8);
 }
 
-# CMP SPL, #byte
-:CMP SPL, u8 is opcode=0x40; uaddr16=0xFFF8 & SPL; u8 {
-    inst_cmp(SPL, u8);
-}
-
-# CMP SPH, #byte
-:CMP SPH, u8 is opcode=0x40; uaddr16=0xFFF9 & SPH; u8 {
-    inst_cmp(SPH, u8);
-}
-
 # CMP0, r
 :CMP0 dreg_axbc is op_h=0xD & dreg_axbc {
     inst_cmp0(dreg_axbc);
@@ -2010,16 +1830,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # CMP0 !addr16
 :CMP0 addr16 is opcode=0xD5; addr16 {
     inst_cmp0(addr16);
-}
-
-# CMP0 SPL
-:CMP0 SPL is opcode=0xD5; uaddr16=0xFFF8 & SPL {
-    inst_cmp0(SPL);
-}
-
-# CMP0 SPH
-:CMP0 SPH is opcode=0xD5; uaddr16=0xFFF9 & SPH {
-    inst_cmp0(SPH);
 }
 
 # CMPS X, [HL+byte]
@@ -2047,11 +1857,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_addw(AX, addr16w);
 }
 
-# ADDW AX, SP
-:ADDW AX, SP is opcode=0x02 & AX; uaddr16=0xFFF8 & SP {
-    inst_addw(AX, SP);
-}
-
 # ADDW AX, [HL+byte]
 :ADDW AX, AddrHLOffsetW is opcode=0x61 & AX; opcode=0x09; AddrHLOffsetW {
     inst_addw(AX, AddrHLOffsetW);
@@ -2075,11 +1880,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # SUBW AX, !addr16
 :SUBW AX, addr16w is opcode=0x22 & AX; addr16w {
     inst_subw(AX, addr16w);
-}
-
-# SUBW AX, SP
-:SUBW AX, SP is opcode=0x22 & AX; uaddr16=0xFFF8 & SP {
-    inst_subw(AX, SP);
 }
 
 # SUBW AX, [HL+byte]
@@ -2109,11 +1909,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # CMPW AX, !addr16
 :CMPW AX, addr16w is opcode=0x42 & AX; addr16w {
     inst_cmpw(AX, addr16w);
-}
-
-# CMPW AX, SP
-:CMPW AX, SP is opcode=0x42 & AX; uaddr16=0xFFF8 & SP {
-    inst_cmpw(AX, SP);
 }
 
 # CMPW AX, [HL+byte]
@@ -2194,16 +1989,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_inc(addr16);
 }
 
-# INC SPL
-:INC SPL is opcode=0xA0; uaddr16=0xFFF8 & SPL {
-    inst_inc(SPL);
-}
-
-# INC SPH
-:INC SPH is opcode=0xA0; uaddr16=0xFFF9 & SPH {
-    inst_inc(SPH);
-}
-
 # INC [HL+byte]
 :INC AddrHLOffset is opcode=0x61; opcode=0x59; AddrHLOffset {
     inst_inc(AddrHLOffset);
@@ -2222,16 +2007,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # DEC !addr16
 :DEC addr16 is opcode=0xB0; addr16 {
     inst_dec(addr16);
-}
-
-# DEC SPL
-:DEC SPL is opcode=0xB0; uaddr16=0xFFF8 & SPL {
-    inst_dec(SPL);
-}
-
-# DEC SPH
-:DEC SPH is opcode=0xB0; uaddr16=0xFFF9 & SPH {
-    inst_dec(SPH);
 }
 
 # DEC [HL+byte]
@@ -2258,11 +2033,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_incw(addr16w);
 }
 
-# INCW SP
-:INCW SP is opcode=0xA2; uaddr16=0xFFF8 & SP {
-    inst_incw(SP);
-}
-
 # INCW [HL+byte]
 :INCW AddrHLOffsetW is opcode=0x61; opcode=0x79; AddrHLOffsetW {
     inst_incw(AddrHLOffsetW);
@@ -2281,11 +2051,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # DECW !addr16
 :DECW addr16w is opcode=0xB2; addr16w {
     inst_decw(addr16w);
-}
-
-# DECW SP
-:DECW SP is opcode=0xB2; uaddr16=0xFFF8 & SP {
-    inst_decw(SP);
 }
 
 # DECW [HL+byte]
@@ -2561,16 +2326,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
     inst_set1(addr16, bit_op_n);
 }
 
-# SET1 SPL.n
-:SET1 SPL"."bit_op_n is opcode=0x71; op_l=0 & bit_op_n & mov1_sreg=0; uaddr16=0xFFF8 & SPL {
-    inst_set1(SPL, bit_op_n);
-}
-
-# SET1 SPH.n
-:SET1 SPH"."bit_op_n is opcode=0x71; op_l=0 & bit_op_n & mov1_sreg=0; uaddr16=0xFFF9 & SPH {
-    inst_set1(SPH, bit_op_n);
-}
-
 # SET1 PSW.n
 :SET1 PSW"."bit_op_n is opcode=0x71 & PSW; op_l=0xA & bit_op_n & mov1_sreg=0; opcode=0xFA {
     inst_set1(PSW, bit_op_n);
@@ -2608,16 +2363,6 @@ CALLT_Entry: [ct_entry] is op2_callt_low & op2_callt_hi
 # CLR1 !addr16.n
 :CLR1 addr16"."bit_op_n is opcode=0x71; op_l=0x8 & bit_op_n & mov1_sreg=0; addr16 {
     inst_clr1(addr16, bit_op_n);
-}
-
-# CLR1 SPL.n
-:CLR1 SPL"."bit_op_n is opcode=0x71; op_l=0x8 & bit_op_n & mov1_sreg=0; uaddr16=0xFFF8 & SPL {
-    inst_clr1(SPL, bit_op_n);
-}
-
-# CLR1 SPH.n
-:CLR1 SPH"."bit_op_n is opcode=0x71; op_l=0x8 & bit_op_n & mov1_sreg=0; uaddr16=0xFFF9 & SPH {
-    inst_clr1(SPH, bit_op_n);
 }
 
 # CLR1 PSW.n
