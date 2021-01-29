@@ -1,0 +1,38 @@
+<dwarf>
+	<register_mappings>
+		<register_mapping dwarf="0" ghidra="X"/>
+		<register_mapping dwarf="1" ghidra="A"/>
+		<register_mapping dwarf="2" ghidra="C"/>
+		<register_mapping dwarf="3" ghidra="B"/>
+		<register_mapping dwarf="4" ghidra="E"/>
+		<register_mapping dwarf="5" ghidra="D"/>
+		<register_mapping dwarf="6" ghidra="L"/>
+		<register_mapping dwarf="7" ghidra="H"/>
+		<register_mapping dwarf="8" ghidra="X1"/>
+		<register_mapping dwarf="9" ghidra="A1"/>
+		<register_mapping dwarf="10" ghidra="C1"/>
+		<register_mapping dwarf="11" ghidra="B1"/>
+		<register_mapping dwarf="12" ghidra="E1"/>
+		<register_mapping dwarf="13" ghidra="D1"/>
+		<register_mapping dwarf="14" ghidra="L1"/>
+		<register_mapping dwarf="15" ghidra="H1"/>
+		<register_mapping dwarf="16" ghidra="X2"/>
+		<register_mapping dwarf="17" ghidra="A2"/>
+		<register_mapping dwarf="18" ghidra="C2"/>
+		<register_mapping dwarf="19" ghidra="B2"/>
+		<register_mapping dwarf="20" ghidra="E2"/>
+		<register_mapping dwarf="21" ghidra="D2"/>
+		<register_mapping dwarf="22" ghidra="L2"/>
+		<register_mapping dwarf="23" ghidra="H2"/>
+		<register_mapping dwarf="24" ghidra="X3"/>
+		<register_mapping dwarf="25" ghidra="A3"/>
+		<register_mapping dwarf="26" ghidra="C3"/>
+		<register_mapping dwarf="27" ghidra="B3"/>
+		<register_mapping dwarf="28" ghidra="E3"/>
+		<register_mapping dwarf="29" ghidra="D3"/>
+		<register_mapping dwarf="30" ghidra="L3"/>
+		<register_mapping dwarf="31" ghidra="H3"/>
+		<register_mapping dwarf="32" ghidra="SP" stackpointer="true"/>
+		<register_mapping dwarf="33" ghidra="PC"/>
+	</register_mappings>
+</dwarf>

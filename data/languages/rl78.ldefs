@@ -11,5 +11,6 @@
             id="rl78:LE:16:default">
     <description>Renesas RL78</description>
     <compiler name="default" spec="rl78.cspec" id="default"/>
+    <external_name tool="DWARF.register.mapping.file" name="rl78.dwarf"/>
   </language>
 </language_definitions>
