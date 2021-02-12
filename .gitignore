@@ -4,3 +4,9 @@ test_bins/*
 dist/*
 .gradle
 *.swp
+bin/
+build/
+.vscode/
+.settings/
+gradle/
+gradlew*
